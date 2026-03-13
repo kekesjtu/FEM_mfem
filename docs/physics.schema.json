@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/fem/physics.schema.json",
+  "title": "FEM Multi-Physics Project Configuration",
+  "type": "object",
+  "required": ["simulation", "fields"],
+  "properties": {
+    "simulation": {
+      "type": "object",
+      "required": ["mesh_path"],
+      "properties": {
+        "mesh_path": { "type": "string" },
+        "order": { "type": "integer", "minimum": 1, "default": 1 },
+        "uniform_refinement_levels": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "output_dir": { "type": "string", "default": "results" },
+        "log_level": {
+          "type": "string",
+          "enum": ["trace", "debug", "info", "warn", "error", "critical"],
+          "default": "info"
+        }
+      },
+      "additionalProperties": false
+    },
+    "materials": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "properties"],
+        "properties": {
+          "name": { "type": "string" },
+          "properties": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Property expression strings, e.g. diffusion='1.0', k='10+0.1*x'."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "domain_materials": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "integer", "minimum": 1 }
+      },
+      "description": "Map material name to domain attribute list. Used for piecewise diffusion assignment."
+    },
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "name": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["electrostatic", "thermal", "mechanical"]
+          },
+          "material": { "type": "string" },
+          "source": { "type": "string", "default": "0.0" },
+          "source_default": { "type": "string", "default": "0.0" },
+          "source_by_domain": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Domain attribute -> source expression"
+          },
+          "diffusion": { "type": "string", "default": "1.0" },
+          "diffusion_by_domain": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Domain attribute -> diffusion expression"
+          },
+          "dirichlet_value": { "type": "number", "default": 0.0 },
+          "dirichlet_bdr_attributes": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 1 },
+            "default": []
+          },
+          "robin_l": { "type": "number", "default": 0.0 },
+          "robin_q": { "type": "number", "default": 0.0 },
+          "robin_bdr_attributes": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 1 },
+            "default": []
+          },
+          "robin_on_remaining_boundaries": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

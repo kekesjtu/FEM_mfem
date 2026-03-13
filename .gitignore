@@ -1,0 +1,19 @@
+# Build outputs
+build/
+cmake-build-*/
+
+# Runtime outputs
+results/
+
+# IDE
+.vscode/
+.cache/
+.clangd/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db

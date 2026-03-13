@@ -1,0 +1,44 @@
+# clangd 配置文件
+# 参考文档: https://clangd.llvm.org/config
+
+CompileFlags:
+  Compiler: x86_64-w64-mingw32-g++
+  Add:
+    - -std=c++17
+    - -DMUPARSER_STATIC
+    - -Wno-vla-extension
+  Remove:
+    # 移除 clang 不支持的 GCC 特定选项
+    - -fdiagnostics-color=always
+
+Diagnostics:
+  # 启用 clang-tidy 检查
+  ClangTidy:
+    Add:
+      - modernize-*
+      - bugprone-*
+      - performance-*
+    Remove:
+      - modernize-use-trailing-return-type
+      - readability-magic-numbers
+      - readability-identifier-length
+
+  UnusedIncludes: Strict
+
+InlayHints:
+  Enabled: true
+  ParameterNames: true
+  DeducedTypes: true
+  Designators: true
+
+Hover:
+  ShowAKA: true
+
+Completion:
+  AllScopes: true
+
+---
+If:
+  PathMatch: .*/mfem/.*
+Index:
+  Background: Skip

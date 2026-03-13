@@ -1,0 +1,53 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 23,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base-mingw-debug",
+      "hidden": true,
+      "generator": "MinGW Makefiles",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "E:/msys64/ucrt64/bin/gcc.exe",
+        "CMAKE_CXX_COMPILER": "E:/msys64/ucrt64/bin/g++.exe",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "mfem-bundled-debug", //用于工作区内mfem/源代码的配置预设
+      "displayName": "MFEM Bundled (Debug)",
+      "description": "Use workspace mfem/ source via add_subdirectory",
+      "inherits": "base-mingw-debug",
+      "cacheVariables": {
+        "FEM_USE_SYSTEM_MFEM": "OFF"
+      }
+    },
+    {
+      "name": "mfem-system-debug", //用于系统安装的MFEM包的配置预设
+      "displayName": "MFEM System (Debug)",
+      "description": "Use installed MFEM package via find_package(mfem)",
+      "inherits": "base-mingw-debug",
+      "cacheVariables": {
+        "FEM_USE_SYSTEM_MFEM": "ON",
+        "MFEM_DIR": "$env{MFEM_DIR}"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "build-bundled-debug",
+      "displayName": "Build Bundled Debug",
+      "configurePreset": "mfem-bundled-debug"
+    },
+    {
+      "name": "build-system-debug",
+      "displayName": "Build System Debug",
+      "configurePreset": "mfem-system-debug"
+    }
+  ]
+}

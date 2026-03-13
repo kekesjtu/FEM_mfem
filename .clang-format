@@ -1,0 +1,50 @@
+# 基于Google风格的clang-format配置
+BasedOnStyle: Google
+
+# 基本设置
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+
+# 大括号风格
+BreakBeforeBraces: Allman
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+
+# 指针和引用对齐
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+# 命名空间缩进
+NamespaceIndentation: None
+
+# 访问修饰符缩进
+AccessModifierOffset: -2
+
+# 其他格式设置
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlwaysBreakAfterReturnType: None
+AlwaysBreakBeforeMultilineStrings: false
+BinPackArguments: true
+BinPackParameters: true
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializers: BeforeColon
+CompactNamespaces: false
+FixNamespaceComments: true
+IncludeBlocks: Preserve
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+SortIncludes: true
+SpaceAfterCStyleCast: false
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 2
+SpacesInAngles: false
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
