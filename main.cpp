@@ -7,8 +7,7 @@
 
 int main(int argc, char *argv[])
 {
-    const std::string config_path =
-        (argc > 1) ? argv[1] : "configs/complex_thermal_robin_project.json";
+    const std::string config_path = (argc > 1) ? argv[1] : "configs/bipolar_thermo_mechanical.json";
 
     try
     {

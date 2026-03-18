@@ -5,6 +5,7 @@
   "type": "object",
   "required": ["simulation", "fields"],
   "properties": {
+    "$schema": { "type": "string" },
     "simulation": {
       "type": "object",
       "required": ["mesh_path"],
@@ -61,7 +62,6 @@
             "type": "string",
             "enum": ["electrostatic", "thermal", "mechanical"]
           },
-          "material": { "type": "string" },
           "source": { "type": "string", "default": "0.0" },
           "source_default": { "type": "string", "default": "0.0" },
           "source_by_domain": {
@@ -69,17 +69,27 @@
             "additionalProperties": { "type": "string" },
             "description": "Domain attribute -> source expression"
           },
-          "diffusion": { "type": "string", "default": "1.0" },
-          "diffusion_by_domain": {
-            "type": "object",
-            "additionalProperties": { "type": "string" },
-            "description": "Domain attribute -> diffusion expression"
-          },
           "dirichlet_value": { "type": "number", "default": 0.0 },
           "dirichlet_bdr_attributes": {
             "type": "array",
             "items": { "type": "integer", "minimum": 1 },
             "default": []
+          },
+          "dirichlet_boundary_conditions": {
+            "type": "array",
+            "description": "Boundary-wise Dirichlet conditions for scalar fields (can set different values on different boundary attribute sets).",
+            "items": {
+              "type": "object",
+              "required": ["bdr_attributes", "value"],
+              "properties": {
+                "bdr_attributes": {
+                  "type": "array",
+                  "items": { "type": "integer", "minimum": 1 }
+                },
+                "value": { "type": "number" }
+              },
+              "additionalProperties": false
+            }
           },
           "robin_l": { "type": "number", "default": 0.0 },
           "robin_q": { "type": "number", "default": 0.0 },
@@ -91,6 +101,108 @@
           "robin_on_remaining_boundaries": {
             "type": "boolean",
             "default": false
+          },
+          "robin_boundary_conditions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["bdr_attributes", "l", "q"],
+              "properties": {
+                "bdr_attributes": {
+                  "type": "array",
+                  "items": { "type": "integer", "minimum": 1 }
+                },
+                "l": { "type": "number" },
+                "q": { "type": "number" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "body_force_default": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 3,
+            "maxItems": 3,
+            "default": [0.0, 0.0, 0.0]
+          },
+          "body_force_by_domain": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "dirichlet_displacement_value": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 3,
+            "maxItems": 3,
+            "default": [0.0, 0.0, 0.0]
+          },
+          "traction_boundary_conditions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["bdr_attributes", "value"],
+              "properties": {
+                "bdr_attributes": {
+                  "type": "array",
+                  "items": { "type": "integer", "minimum": 1 }
+                },
+                "value": {
+                  "type": "array",
+                  "items": { "type": "number" },
+                  "minItems": 3,
+                  "maxItems": 3
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "pressure_boundary_conditions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["bdr_attributes", "value"],
+              "properties": {
+                "bdr_attributes": {
+                  "type": "array",
+                  "items": { "type": "integer", "minimum": 1 }
+                },
+                "value": { "type": "number" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "normal_displacement_boundary_conditions": {
+            "type": "array",
+            "description": "Weakly enforce u·n = 0 on selected boundaries using a penalty term.",
+            "items": {
+              "type": "object",
+              "required": ["bdr_attributes"],
+              "properties": {
+                "bdr_attributes": {
+                  "type": "array",
+                  "items": { "type": "integer", "minimum": 1 }
+                },
+                "penalty": { "type": "number", "default": 1.0e12 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "reference_temperature": {
+            "type": "number",
+            "default": 293.15
+          },
+          "enable_thermal_strain_coupling": {
+            "type": "boolean",
+            "default": true
+          },
+          "enable_stress_postprocess": {
+            "type": "boolean",
+            "default": true
           }
         },
         "additionalProperties": false

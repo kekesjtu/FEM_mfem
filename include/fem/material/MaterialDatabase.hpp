@@ -43,6 +43,16 @@ class MaterialDatabase
         return prop_it->second;
     }
 
+    bool Contains(const std::string &material, const std::string &property) const
+    {
+        const auto mat_it = materials_.find(material);
+        if (mat_it == materials_.end())
+        {
+            return false;
+        }
+        return mat_it->second.find(property) != mat_it->second.end();
+    }
+
   private:
     std::unordered_map<std::string, std::unordered_map<std::string, frontend::ScalarExpression>>
         materials_;

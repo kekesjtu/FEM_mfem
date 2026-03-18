@@ -1,0 +1,84 @@
+{
+  "$schema": "../docs/physics.schema.json",
+  "simulation": {
+    "mesh_path": "mesh_data/bipolar_plate.msh",
+    "order": 1,
+    "uniform_refinement_levels": 0,
+    "output_dir": "results/bipolar_thermo_mechanical",
+    "log_level": "info"
+  },
+  "materials": [
+    {
+      "name": "titanium",
+      "properties": {
+        "diffusion": "7.5",
+        "thermal_expansion_secant": "7.06e-6",
+        "young_modulus": "1.05e11",
+        "poisson_ratio": "0.33"
+      }
+    },
+    {
+      "name": "aluminum",
+      "properties": {
+        "diffusion": "160.0",
+        "thermal_expansion_secant": "2.36e-5",
+        "young_modulus": "6.9e10",
+        "poisson_ratio": "0.33"
+      }
+    }
+  ],
+  "domain_materials": {
+    "titanium": [1, 2],
+    "aluminum": [3]
+  },
+  "fields": [
+    {
+      "name": "temperature",
+      "type": "thermal",
+      "source_default": "0.0",
+      "source_by_domain": {
+        "3": "1.1086e7"
+      },
+      "robin_boundary_conditions": [
+        {
+          "bdr_attributes": [
+            8, 9, 10, 12, 13, 17, 18, 19, 26, 27, 28, 29, 30, 38, 39, 40
+          ],
+          "l": 50.0,
+          "q": 17657.5
+        },
+        {
+          "bdr_attributes": [1, 2],
+          "l": 5.0,
+          "q": 1465.75
+        }
+      ],
+      "enable_stress_postprocess": false
+    },
+    {
+      "name": "displacement",
+      "type": "mechanical",
+      "normal_displacement_boundary_conditions": [
+        {
+          "bdr_attributes": [3, 5, 20, 23, 25, 37, 43, 44, 45],
+          "penalty": 1.0e16
+        }
+      ],
+      "dirichlet_displacement_value": [0.0, 0.0, 0.0],
+      "body_force_default": [0.0, 0.0, 0.0],
+      "pressure_boundary_conditions": [
+        {
+          "bdr_attributes": [24],
+          "value": 1000000.0
+        },
+        {
+          "bdr_attributes": [4],
+          "value": 8000000.0
+        }
+      ],
+      "reference_temperature": 273.15,
+      "enable_thermal_strain_coupling": true,
+      "enable_stress_postprocess": true
+    }
+  ]
+}

@@ -109,7 +109,7 @@ endif()
 # 源文件收集
 # ==============================================================================
 # 主程序 + 分层实现
-file(GLOB_RECURSE FEM_CORE_SOURCES
+file(GLOB_RECURSE FEM_CORE_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/src/*.cpp"
 )
 
@@ -119,8 +119,9 @@ set(FEM_SOURCES
 )
 
 # 收集头文件 (可选)
-file(GLOB_RECURSE FEM_HEADERS
+file(GLOB_RECURSE FEM_HEADERS CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/include/*.h"
+    "${CMAKE_SOURCE_DIR}/include/*.hpp"
 )
 
 # 创建可执行文件

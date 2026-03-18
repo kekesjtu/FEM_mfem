@@ -1,4 +1,5 @@
 {
+  "$schema": "../docs/physics.schema.json",
   "simulation": {
     "mesh_path": "mesh_data/complex_tet_mesh.msh",
     "order": 1,

@@ -30,6 +30,16 @@ std::unordered_map<int, std::string> ParseIntStringMap(const json &node)
     }
     return result;
 }
+
+std::unordered_map<int, std::vector<double>> ParseIntVectorMap(const json &node)
+{
+    std::unordered_map<int, std::vector<double>> result;
+    for (const auto &[k, v] : node.items())
+    {
+        result.emplace(std::stoi(k), v.get<std::vector<double>>());
+    }
+    return result;
+}
 }  // namespace
 
 ProjectConfig ConfigLoader::LoadFromFile(const std::string &path)
@@ -95,20 +105,94 @@ ProjectConfig ConfigLoader::LoadFromFile(const std::string &path)
             {
                 field.source_by_domain = ParseIntStringMap(field_node.at("source_by_domain"));
             }
-            field.diffusion = ReadOrDefault<std::string>(field_node, "diffusion", "1.0");
-            if (field_node.contains("diffusion_by_domain"))
-            {
-                field.diffusion_by_domain = ParseIntStringMap(field_node.at("diffusion_by_domain"));
-            }
             field.dirichlet_value = ReadOrDefault<double>(field_node, "dirichlet_value", 0.0);
             field.dirichlet_bdr_attributes = ReadOrDefault<std::vector<int>>(
                 field_node, "dirichlet_bdr_attributes", std::vector<int>{});
+            if (field_node.contains("dirichlet_boundary_conditions"))
+            {
+                for (const auto &bc_node : field_node.at("dirichlet_boundary_conditions"))
+                {
+                    FieldConfig::ScalarDirichletBoundaryCondition bc;
+                    bc.bdr_attributes = ReadOrDefault<std::vector<int>>(bc_node, "bdr_attributes",
+                                                                        std::vector<int>{});
+                    bc.value = ReadOrDefault<double>(bc_node, "value", 0.0);
+                    field.dirichlet_boundary_conditions.push_back(std::move(bc));
+                }
+            }
             field.robin_l = ReadOrDefault<double>(field_node, "robin_l", 0.0);
             field.robin_q = ReadOrDefault<double>(field_node, "robin_q", 0.0);
             field.robin_bdr_attributes = ReadOrDefault<std::vector<int>>(
                 field_node, "robin_bdr_attributes", std::vector<int>{});
             field.robin_on_remaining_boundaries =
                 ReadOrDefault<bool>(field_node, "robin_on_remaining_boundaries", false);
+            if (field_node.contains("robin_boundary_conditions"))
+            {
+                for (const auto &bc_node : field_node.at("robin_boundary_conditions"))
+                {
+                    FieldConfig::RobinBoundaryCondition bc;
+                    bc.bdr_attributes = ReadOrDefault<std::vector<int>>(bc_node, "bdr_attributes",
+                                                                        std::vector<int>{});
+                    bc.l = ReadOrDefault<double>(bc_node, "l", 0.0);
+                    bc.q = ReadOrDefault<double>(bc_node, "q", 0.0);
+                    field.robin_boundary_conditions.push_back(std::move(bc));
+                }
+            }
+
+            field.body_force_default = ReadOrDefault<std::vector<double>>(
+                field_node, "body_force_default", std::vector<double>{0.0, 0.0, 0.0});
+            if (field_node.contains("body_force_by_domain"))
+            {
+                field.body_force_by_domain =
+                    ParseIntVectorMap(field_node.at("body_force_by_domain"));
+            }
+
+            field.dirichlet_displacement_value = ReadOrDefault<std::vector<double>>(
+                field_node, "dirichlet_displacement_value", std::vector<double>{0.0, 0.0, 0.0});
+
+            if (field_node.contains("traction_boundary_conditions"))
+            {
+                for (const auto &bc_node : field_node.at("traction_boundary_conditions"))
+                {
+                    FieldConfig::VectorBoundaryCondition bc;
+                    bc.bdr_attributes = ReadOrDefault<std::vector<int>>(bc_node, "bdr_attributes",
+                                                                        std::vector<int>{});
+                    bc.value = ReadOrDefault<std::vector<double>>(
+                        bc_node, "value", std::vector<double>{0.0, 0.0, 0.0});
+                    field.traction_boundary_conditions.push_back(std::move(bc));
+                }
+            }
+
+            if (field_node.contains("pressure_boundary_conditions"))
+            {
+                for (const auto &bc_node : field_node.at("pressure_boundary_conditions"))
+                {
+                    FieldConfig::ScalarBoundaryCondition bc;
+                    bc.bdr_attributes = ReadOrDefault<std::vector<int>>(bc_node, "bdr_attributes",
+                                                                        std::vector<int>{});
+                    bc.value = ReadOrDefault<double>(bc_node, "value", 0.0);
+                    field.pressure_boundary_conditions.push_back(std::move(bc));
+                }
+            }
+
+            if (field_node.contains("normal_displacement_boundary_conditions"))
+            {
+                for (const auto &bc_node : field_node.at("normal_displacement_boundary_conditions"))
+                {
+                    FieldConfig::NormalDisplacementBoundaryCondition bc;
+                    bc.bdr_attributes = ReadOrDefault<std::vector<int>>(bc_node, "bdr_attributes",
+                                                                        std::vector<int>{});
+                    bc.penalty = ReadOrDefault<double>(bc_node, "penalty", 1.0e12);
+                    field.normal_displacement_boundary_conditions.push_back(std::move(bc));
+                }
+            }
+
+            field.reference_temperature =
+                ReadOrDefault<double>(field_node, "reference_temperature", 293.15);
+            field.enable_thermal_strain_coupling =
+                ReadOrDefault<bool>(field_node, "enable_thermal_strain_coupling", true);
+
+            field.enable_stress_postprocess =
+                ReadOrDefault<bool>(field_node, "enable_stress_postprocess", true);
             config.fields.push_back(std::move(field));
         }
     }

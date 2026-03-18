@@ -1,10 +1,10 @@
 #pragma once
 
-#include "fem/assembly/IAssembler.hpp"
+#include "fem/assembly/IPoissonAssembler.hpp"
 
 namespace fem::assembly
 {
-class MfemPoissonAssembler final : public IAssembler
+class MfemPoissonAssembler final : public IPoissonAssembler
 {
   public:
     AssembledSystem Assemble(PoissonAssemblyInput &input,

@@ -17,7 +17,7 @@ void MfemPcgSolver::Solve(mfem::Operator &A, const mfem::Vector &b, mfem::Vector
         throw std::runtime_error("MfemPcgSolver expects mfem::SparseMatrix operator.");
     }
 
-    mfem::GSSmoother preconditioner(*sparse_matrix);
+    mfem::DSmoother preconditioner(*sparse_matrix);
     mfem::PCG(*sparse_matrix, preconditioner, b, x, print_level_, max_iter_, rel_tol_, abs_tol_);
 }
 }  // namespace fem::solver
