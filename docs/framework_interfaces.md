@@ -257,6 +257,38 @@
 
 - `A` 非 `SparseMatrix` 时抛 `std::runtime_error`
 
+## 8.3 `MfemAmgSolver`
+
+构造：
+
+- `MfemAmgSolver(double rel_tol, double abs_tol, int max_iter, int print_level)`
+
+行为：
+
+- 要求 `A` 可转换为 `mfem::SparseMatrix`
+- 预条件：`mfem::GSSmoother`
+- 迭代：`mfem::PCG`
+
+## 8.4 `MfemUmfpackSolver`
+
+行为：
+
+- 要求 `A` 可转换为 `mfem::SparseMatrix`
+- 当启用 `MFEM_USE_SUITESPARSE` 时调用 `mfem::UMFPackSolver`
+- 若未启用 SuiteSparse，则抛出运行时异常
+
+## 8.5 `LinearSolverFactory`
+
+接口：
+
+- `CreateLinearSolver(solver_name, rel_tol, abs_tol, max_iter, print_level)`
+
+支持类型：
+
+- `pcg`
+- `amg`
+- `umfpack`（兼容 `umpack`）
+
 ---
 
 ## 9. 输出与后处理接口

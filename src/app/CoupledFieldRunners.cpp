@@ -83,8 +83,8 @@ int RunThermoMechanicalCoupled(const fem::frontend::ProjectConfig &config,
     mfem::GridFunction temperature(&thermal_context.Space());
     temperature = 0.0;
 
-    detail::SolveScalarFieldOnContext(thermal_context, thermal_field, *diffusion, *source, 1000,
-                                      temperature);
+    detail::SolveScalarFieldOnContext(thermal_context, thermal_field, *diffusion, *source, 500,
+                                      config.simulation.solver, temperature);
 
     fem::post::SolutionTextExporter::ExportScalarNodalTxt(
         config.simulation.output_dir + "/" + thermal_field.name + "_solution.txt",
@@ -134,9 +134,6 @@ int RunElectroThermalCoupled(const fem::frontend::ProjectConfig &config,
 
     auto sigma_coeff = detail::BuildPiecewiseDomainCoefficient(
         mesh, sigma_default, sigma_by_domain_expr, coupled_variable_names);
-    const mfem::Vector sigma_values = detail::BuildPiecewiseDomainValues(
-        mesh, sigma_default, sigma_by_domain_expr, coupled_variable_names);
-
     auto electro_source = detail::BuildPiecewiseDomainCoefficient(
         mesh, electro_field.source_default, electro_field.source_by_domain, coupled_variable_names);
 
@@ -144,7 +141,7 @@ int RunElectroThermalCoupled(const fem::frontend::ProjectConfig &config,
     potential = 0.0;
 
     detail::SolveScalarFieldOnContext(electro_context, electro_field, *sigma_coeff, *electro_source,
-                                      1000, potential);
+                                      1000, config.simulation.solver, potential);
 
     const auto electro_stats = detail::ComputeFieldStatistics(potential);
     spdlog::info("Field '{}' stats: min={}, max={}, mean={}, non_finite_count={}",
@@ -155,16 +152,8 @@ int RunElectroThermalCoupled(const fem::frontend::ProjectConfig &config,
         mesh, thermal_field.source_default, thermal_field.source_by_domain, coupled_variable_names);
     auto joule_source_coeff =
         std::make_unique<JouleHeatCoefficient>(*sigma_coeff, potential, mesh.Dimension());
-    auto thermal_source_coeff =
+    auto thermal_source_raw =
         std::make_unique<SumScalarCoefficient>(*thermal_source_base, *joule_source_coeff);
-
-    const mfem::Vector avg_grad_sq = detail::BuildDomainAverageGradSquare(mesh, potential);
-    mfem::Vector joule_q(avg_grad_sq.Size());
-    for (int i = 0; i < joule_q.Size(); ++i)
-    {
-        joule_q(i) = sigma_values(i) * avg_grad_sq(i);
-    }
-    detail::DebugLogDomainJouleSource(thermal_field.name, mesh, sigma_values, avg_grad_sq, joule_q);
 
     std::unordered_map<int, std::string> thermal_diffusion_by_domain;
     if (!config.domain_materials.empty())
@@ -181,7 +170,8 @@ int RunElectroThermalCoupled(const fem::frontend::ProjectConfig &config,
     temperature = 0.0;
 
     detail::SolveScalarFieldOnContext(electro_context, thermal_field, *thermal_diffusion_coeff,
-                                      *thermal_source_coeff, 1000, temperature);
+                                      *thermal_source_raw, 1000, config.simulation.solver,
+                                      temperature);
 
     const auto thermal_stats = detail::ComputeFieldStatistics(temperature);
     spdlog::info("Field '{}' stats: min={}, max={}, mean={}, non_finite_count={}",

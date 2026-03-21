@@ -4,6 +4,7 @@
     "mesh_path": "mesh_data/busbar.msh",
     "order": 1,
     "uniform_refinement_levels": 0,
+    "solver": "pcg",
     "output_dir": "results/electro_thermal_no_iteration",
     "log_level": "info"
   },

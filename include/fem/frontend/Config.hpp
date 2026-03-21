@@ -13,6 +13,7 @@ struct SimulationConfig
     int uniform_refinement_levels = 0;
     std::string output_dir = "results";
     std::string log_level = "info";
+    std::string solver = "pcg";
 };
 
 struct MaterialConfig

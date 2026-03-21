@@ -57,12 +57,13 @@ ScalarBoundarySetup BuildScalarBoundarySetup(const mfem::Mesh &mesh,
 void SolveScalarPoissonSystem(mfem::FiniteElementSpace &space, mfem::Coefficient &diffusion,
                               mfem::Coefficient &source, const ScalarBoundarySetup &boundaries,
                               double dirichlet_value, int max_iterations,
-                              mfem::GridFunction &solution);
+                              const std::string &solver_name, mfem::GridFunction &solution);
 
 void SolveScalarFieldOnContext(fem::fe::ScalarFeContext &context,
                                const fem::frontend::FieldConfig &field,
                                mfem::Coefficient &diffusion, mfem::Coefficient &source,
-                               int max_iterations, mfem::GridFunction &solution);
+                               int max_iterations, const std::string &solver_name,
+                               mfem::GridFunction &solution);
 
 std::unique_ptr<mfem::Coefficient> BuildPiecewiseDomainCoefficient(
     const mfem::Mesh &mesh, const std::string &default_expr,
@@ -89,13 +90,6 @@ std::string ResolveElectricalConductivityFromMaterial(
 mfem::Vector BuildPiecewiseDomainValues(const mfem::Mesh &mesh, const std::string &default_expr,
                                         const std::unordered_map<int, std::string> &overrides,
                                         const std::vector<std::string> &coupled_variable_names);
-
-mfem::Vector BuildDomainAverageGradSquare(mfem::Mesh &mesh, const mfem::GridFunction &scalar);
-
-void DebugLogDomainJouleSource(const std::string &thermal_field_name, const mfem::Mesh &mesh,
-                               const mfem::Vector &sigma_by_domain,
-                               const mfem::Vector &avg_grad_sq_by_domain,
-                               const mfem::Vector &joule_q_by_domain);
 
 mfem::Vector ToSizedVector(const std::vector<double> &values, int dim);
 

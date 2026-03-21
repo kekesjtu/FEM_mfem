@@ -1,6 +1,7 @@
 # 我们项目的热问题 JSON 格式
 
 本格式用于在当前 FEM_mfem 项目中描述稳态热传导问题，支持：
+
 - 域分段材料导热系数
 - 域分段热源
 - Dirichlet 与 Robin 边界
@@ -22,6 +23,7 @@
 - `order`：有限元阶次
 - `uniform_refinement_levels`：一致加密层数
 - `output_dir`：输出目录
+- `solver`：线性求解器类型，可选 `pcg` / `amg` / `umfpack`（兼容拼写 `umpack`）
 - `log_level`：日志级别
 
 ## materials

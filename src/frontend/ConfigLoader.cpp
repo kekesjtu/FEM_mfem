@@ -62,6 +62,7 @@ ProjectConfig ConfigLoader::LoadFromFile(const std::string &path)
         ReadOrDefault<int>(sim, "uniform_refinement_levels", 0);
     config.simulation.output_dir = ReadOrDefault<std::string>(sim, "output_dir", "results");
     config.simulation.log_level = ReadOrDefault<std::string>(sim, "log_level", "info");
+    config.simulation.solver = ReadOrDefault<std::string>(sim, "solver", "pcg");
 
     if (root.contains("materials"))
     {

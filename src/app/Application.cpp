@@ -18,6 +18,7 @@ int Application::Run(const std::string &config_path)
     spdlog::info("Loaded configuration: {}", config_path);
     spdlog::info("Mesh: {}, order: {}, refinement: {}", config.simulation.mesh_path,
                  config.simulation.order, config.simulation.uniform_refinement_levels);
+    spdlog::info("Linear solver: {}", config.simulation.solver);
 
     if (config.fields.empty())
     {

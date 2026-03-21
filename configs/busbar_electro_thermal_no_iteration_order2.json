@@ -1,0 +1,65 @@
+{
+  "$schema": "../docs/physics.schema.json",
+  "simulation": {
+    "mesh_path": "mesh_data/busbar_order2.msh",
+    "order": 2,
+    "uniform_refinement_levels": 0,
+    "solver": "amgcl",
+    "output_dir": "results/electro_thermal_no_iteration_order2",
+    "log_level": "info"
+  },
+  "materials": [
+    {
+      "name": "copper",
+      "properties": {
+        "diffusion": "400.0",
+        "electrical_conductivity": "5.998e7"
+      }
+    },
+    {
+      "name": "titanium",
+      "properties": {
+        "diffusion": "7.5",
+        "electrical_conductivity": "7.407e5"
+      }
+    }
+  ],
+  "domain_materials": {
+    "copper": [1],
+    "titanium": [2, 3, 4, 5, 6, 7]
+  },
+  "fields": [
+    {
+      "name": "voltage",
+      "type": "electrostatic",
+      "source_default": "0.0",
+      "dirichlet_boundary_conditions": [
+        {
+          "bdr_attributes": [43],
+          "value": 0.02
+        },
+        {
+          "bdr_attributes": [8, 15],
+          "value": 0.0
+        }
+      ],
+      "enable_stress_postprocess": false
+    },
+    {
+      "name": "temperature",
+      "type": "thermal",
+      "source_default": "0.0",
+      "robin_boundary_conditions": [
+        {
+          "bdr_attributes": [
+            1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 19, 20, 22, 24, 26, 28, 29, 30, 31, 32,
+            37, 39, 40, 41, 42
+          ],
+          "l": 5.0,
+          "q": 1465.75
+        }
+      ],
+      "enable_stress_postprocess": false
+    }
+  ]
+}

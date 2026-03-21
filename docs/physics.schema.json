@@ -18,6 +18,11 @@
           "default": 0
         },
         "output_dir": { "type": "string", "default": "results" },
+        "solver": {
+          "type": "string",
+          "enum": ["pcg", "amgcl", "umfpack", "umpack"],
+          "default": "pcg"
+        },
         "log_level": {
           "type": "string",
           "enum": ["trace", "debug", "info", "warn", "error", "critical"],

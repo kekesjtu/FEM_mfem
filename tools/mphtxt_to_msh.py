@@ -192,7 +192,7 @@ def write_msh(out_path: Path, points, sections, scale: float):
         }
         corner_to_raw = [raw_corners.index(c) for c in corners]
 
-        gmsh_edges = ((0, 1), (1, 2), (2, 0), (0, 3), (1, 3), (2, 3))
+        gmsh_edges = ((0, 1), (1, 2), (2, 0), (0, 3), (2, 3), (1, 3))
         mids = []
         for a, b in gmsh_edges:
             ra = corner_to_raw[a]
@@ -461,7 +461,11 @@ def write_msh(out_path: Path, points, sections, scale: float):
                 if name == "tri":
                     conn = tuple(corners)
                 else:
-                    conn = tuple(corners) + conn[3:]
+                    # Re-map edge midpoint nodes to match the new corner ordering.
+                    # conn still holds the original COMSOL tri2 connectivity;
+                    # reorder_tri2_from_comsol builds the correct Gmsh node order
+                    # for the reoriented corner sequence.
+                    conn = reorder_tri2_from_comsol(conn, tuple(corners))
 
             if is_boundary_block and max_dim == 3 and name == "quad":
                 key = frozenset(conn[:4])

@@ -8,7 +8,9 @@
 #include "fem/mapping/CoefficientFactory.hpp"
 #include "fem/post/MechanicalPostProcessor.hpp"
 #include "fem/post/SolutionTextExporter.hpp"
+#include "fem/solver/LinearSolverFactory.hpp"
 #include "fem/solver/MfemPcgSolver.hpp"
+
 
 #include "spdlog/spdlog.h"
 
@@ -252,7 +254,7 @@ ScalarBoundarySetup BuildScalarBoundarySetup(const mfem::Mesh &mesh,
 void SolveScalarPoissonSystem(mfem::FiniteElementSpace &space, mfem::Coefficient &diffusion,
                               mfem::Coefficient &source, const ScalarBoundarySetup &boundaries,
                               double dirichlet_value, int max_iterations,
-                              mfem::GridFunction &solution)
+                              const std::string &solver_name, mfem::GridFunction &solution)
 {
     fem::assembly::PoissonAssemblyInput input{
         space, diffusion, source, boundaries.essential_marker, {}, {}, dirichlet_value};
@@ -262,19 +264,21 @@ void SolveScalarPoissonSystem(mfem::FiniteElementSpace &space, mfem::Coefficient
     fem::assembly::MfemPoissonAssembler assembler;
     auto assembled = assembler.Assemble(input, solution);
 
-    fem::solver::MfemPcgSolver linear_solver(1e-10, 0.0, max_iterations, 0);
-    linear_solver.Solve(*assembled.A.Ptr(), assembled.B, assembled.X);
+    auto linear_solver =
+        fem::solver::CreateLinearSolver(solver_name, 1e-10, 0.0, max_iterations, 0);
+    linear_solver->Solve(*assembled.A.Ptr(), assembled.B, assembled.X);
     assembled.bilinear->RecoverFEMSolution(assembled.X, *assembled.linear, solution);
 }
 
 void SolveScalarFieldOnContext(fem::fe::ScalarFeContext &context,
                                const fem::frontend::FieldConfig &field,
                                mfem::Coefficient &diffusion, mfem::Coefficient &source,
-                               int max_iterations, mfem::GridFunction &solution)
+                               int max_iterations, const std::string &solver_name,
+                               mfem::GridFunction &solution)
 {
     const ScalarBoundarySetup boundaries = BuildScalarBoundarySetup(context.Mesh(), field);
     SolveScalarPoissonSystem(context.Space(), diffusion, source, boundaries, field.dirichlet_value,
-                             max_iterations, solution);
+                             max_iterations, solver_name, solution);
 }
 
 std::unique_ptr<mfem::Coefficient> BuildPiecewiseDomainCoefficient(
@@ -402,84 +406,6 @@ mfem::Vector BuildPiecewiseDomainValues(const mfem::Mesh &mesh, const std::strin
     }
 
     return values;
-}
-
-mfem::Vector BuildDomainAverageGradSquare(mfem::Mesh &mesh, const mfem::GridFunction &scalar)
-{
-    const int max_attr = mesh.attributes.Size() > 0 ? mesh.attributes.Max() : 0;
-    mfem::Vector avg_by_attr(max_attr > 0 ? max_attr : 1);
-    avg_by_attr = 0.0;
-
-    std::vector<double> sums(avg_by_attr.Size(), 0.0);
-    std::vector<int> counts(avg_by_attr.Size(), 0);
-
-    for (int e = 0; e < mesh.GetNE(); ++e)
-    {
-        const int attr = mesh.GetAttribute(e);
-        if (attr <= 0 || attr > avg_by_attr.Size())
-        {
-            continue;
-        }
-
-        const auto &center = mfem::Geometries.GetCenter(mesh.GetElementBaseGeometry(e));
-        mfem::ElementTransformation *trans = mesh.GetElementTransformation(e);
-        if (!trans)
-        {
-            continue;
-        }
-        trans->SetIntPoint(&center);
-        mfem::Vector grad(mesh.Dimension());
-        scalar.GetGradient(*trans, grad);
-        const double grad_sq = grad * grad;
-        sums[attr - 1] += grad_sq;
-        counts[attr - 1] += 1;
-    }
-
-    for (int i = 0; i < avg_by_attr.Size(); ++i)
-    {
-        if (counts[i] > 0)
-        {
-            avg_by_attr(i) = sums[i] / static_cast<double>(counts[i]);
-        }
-    }
-
-    return avg_by_attr;
-}
-
-void DebugLogDomainJouleSource(const std::string &thermal_field_name, const mfem::Mesh &mesh,
-                               const mfem::Vector &sigma_by_domain,
-                               const mfem::Vector &avg_grad_sq_by_domain,
-                               const mfem::Vector &joule_q_by_domain)
-{
-    const int max_attr = mesh.attributes.Size() > 0 ? mesh.attributes.Max() : 0;
-    std::vector<int> present(max_attr + 1, 0);
-    for (int e = 0; e < mesh.GetNE(); ++e)
-    {
-        const int attr = mesh.GetAttribute(e);
-        if (attr > 0 && attr <= max_attr)
-        {
-            present[attr] = 1;
-        }
-    }
-
-    spdlog::info("[debug][{}] domain Joule source report (Q=sigma*|grad(V)|^2):",
-                 thermal_field_name);
-    for (int attr = 1; attr <= max_attr; ++attr)
-    {
-        if (!present[attr])
-        {
-            continue;
-        }
-        const double sigma =
-            (attr - 1 < sigma_by_domain.Size()) ? sigma_by_domain(attr - 1) : sigma_by_domain(0);
-        const double grad_sq = (attr - 1 < avg_grad_sq_by_domain.Size())
-                                   ? avg_grad_sq_by_domain(attr - 1)
-                                   : avg_grad_sq_by_domain(0);
-        const double q = (attr - 1 < joule_q_by_domain.Size()) ? joule_q_by_domain(attr - 1)
-                                                               : joule_q_by_domain(0);
-        spdlog::info("[debug][{}]   domain_attr={} sigma={} avg_grad_sq={} Q={}",
-                     thermal_field_name, attr, sigma, grad_sq, q);
-    }
 }
 
 mfem::Vector ToSizedVector(const std::vector<double> &values, int dim)
@@ -780,8 +706,9 @@ int RunMechanicalFieldInternal(const fem::frontend::ProjectConfig &config,
     fem::assembly::MfemLinearElasticityAssembler assembler;
     auto assembled = assembler.Assemble(input, displacement);
 
-    fem::solver::MfemPcgSolver linear_solver(1e-10, 0.0, 2000, 0);
-    linear_solver.Solve(*assembled.A.Ptr(), assembled.B, assembled.X);
+    auto linear_solver =
+        fem::solver::CreateLinearSolver(config.simulation.solver, 1e-10, 0.0, 2000, 0);
+    linear_solver->Solve(*assembled.A.Ptr(), assembled.B, assembled.X);
     assembled.bilinear->RecoverFEMSolution(assembled.X, *assembled.linear, displacement);
 
     mfem::H1_FECollection von_fec(1, dim);

@@ -35,7 +35,8 @@ int RunScalarField(const fem::frontend::ProjectConfig &config,
 
     mfem::GridFunction solution(&fe_context.Space());
     solution = 0.0;
-    detail::SolveScalarFieldOnContext(fe_context, field, *diffusion, *source, 500, solution);
+    detail::SolveScalarFieldOnContext(fe_context, field, *diffusion, *source, 500,
+                                      config.simulation.solver, solution);
 
     const auto stats = detail::ComputeFieldStatistics(solution);
     spdlog::info("Field '{}' stats: min={}, max={}, mean={}, non_finite_count={}", field.name,

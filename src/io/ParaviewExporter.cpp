@@ -20,6 +20,7 @@ void ParaviewExporter::Save(const std::string &collection_name, const std::strin
     collection.SetCycle(cycle);
     collection.SetTime(time);
     collection.RegisterField(field_name, &field);
+    collection.SetHighOrderOutput(true);
     collection.Save();
 }
 }  // namespace fem::io

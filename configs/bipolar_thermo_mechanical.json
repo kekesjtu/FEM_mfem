@@ -4,6 +4,7 @@
     "mesh_path": "mesh_data/bipolar_plate.msh",
     "order": 1,
     "uniform_refinement_levels": 0,
+    "solver": "pcg",
     "output_dir": "results/bipolar_thermo_mechanical",
     "log_level": "info"
   },
