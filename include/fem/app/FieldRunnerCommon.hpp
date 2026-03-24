@@ -15,6 +15,7 @@
 namespace fem::fe
 {
 class ScalarFeContext;
+class ParallelScalarFeContext;
 }  // namespace fem::fe
 
 namespace fem::app::detail
@@ -57,12 +58,22 @@ ScalarBoundarySetup BuildScalarBoundarySetup(const mfem::Mesh &mesh,
 void SolveScalarPoissonSystem(mfem::FiniteElementSpace &space, mfem::Coefficient &diffusion,
                               mfem::Coefficient &source, const ScalarBoundarySetup &boundaries,
                               double dirichlet_value, int max_iterations,
-                              const std::string &solver_name, mfem::GridFunction &solution);
+                              const std::string &solver_name,
+                              const std::string &assembly_mode,
+                              mfem::GridFunction &solution);
 
 void SolveScalarFieldOnContext(fem::fe::ScalarFeContext &context,
                                const fem::frontend::FieldConfig &field,
                                mfem::Coefficient &diffusion, mfem::Coefficient &source,
                                int max_iterations, const std::string &solver_name,
+                               const std::string &assembly_mode,
+                               mfem::GridFunction &solution);
+
+void SolveScalarFieldOnParallelContext(fem::fe::ParallelScalarFeContext &context,
+                                       const fem::frontend::FieldConfig &field,
+                                       mfem::Coefficient &diffusion, mfem::Coefficient &source,
+                                       int max_iterations, const std::string &solver_name,
+                                       const std::string &assembly_mode,
                                mfem::GridFunction &solution);
 
 std::unique_ptr<mfem::Coefficient> BuildPiecewiseDomainCoefficient(
@@ -105,6 +116,8 @@ std::unique_ptr<mfem::PWConstCoefficient> BuildAlphaCoefficientByDomain(
     const std::vector<std::string> &coupled_variable_names, const std::string &default_material);
 
 FieldStatistics ComputeFieldStatistics(const mfem::GridFunction &field);
+
+FieldStatistics ComputeGlobalFieldStatistics(const mfem::ParGridFunction &field);
 
 PiecewiseVectorCoefficientStorage BuildPiecewiseDomainVectorCoefficient(
     const mfem::Mesh &mesh, int dim, const std::vector<double> &default_value,

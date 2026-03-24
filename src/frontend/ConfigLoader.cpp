@@ -2,8 +2,12 @@
 
 #include "nlohmann/json.hpp"
 
+#include <filesystem>
 #include <fstream>
+#include <cctype>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace fem::frontend
 {
@@ -11,6 +15,8 @@ using json = nlohmann::json;
 
 namespace
 {
+namespace fs = std::filesystem;
+
 template <typename T>
 T ReadOrDefault(const json &node, const std::string &key, T fallback)
 {
@@ -40,11 +46,98 @@ std::unordered_map<int, std::vector<double>> ParseIntVectorMap(const json &node)
     }
     return result;
 }
+
+fs::path FindExistingPathByAscending(const fs::path &input)
+{
+    if (input.is_absolute())
+    {
+        if (fs::exists(input))
+        {
+            return fs::weakly_canonical(input);
+        }
+        return {};
+    }
+
+    if (fs::exists(input))
+    {
+        return fs::weakly_canonical(fs::absolute(input));
+    }
+
+    fs::path probe = fs::current_path();
+    while (true)
+    {
+        const fs::path candidate = probe / input;
+        if (fs::exists(candidate))
+        {
+            return fs::weakly_canonical(candidate);
+        }
+
+        if (!probe.has_parent_path() || probe == probe.parent_path())
+        {
+            break;
+        }
+        probe = probe.parent_path();
+    }
+
+    return {};
+}
+
+std::string ResolveSimulationPathForRead(const std::string &raw_path,
+                                         const fs::path &resolved_config_file)
+{
+    const fs::path input(raw_path);
+    if (input.is_absolute())
+    {
+        return input.string();
+    }
+
+    if (fs::exists(input))
+    {
+        return fs::weakly_canonical(fs::absolute(input)).string();
+    }
+
+    const fs::path config_dir = resolved_config_file.parent_path();
+
+    const std::vector<fs::path> direct_candidates = {
+        config_dir / input,
+        config_dir.parent_path() / input,
+    };
+
+    for (const auto &candidate : direct_candidates)
+    {
+        if (fs::exists(candidate))
+        {
+            return fs::weakly_canonical(candidate).string();
+        }
+    }
+
+    fs::path probe = config_dir;
+    while (true)
+    {
+        const fs::path candidate = probe / input;
+        if (fs::exists(candidate))
+        {
+            return fs::weakly_canonical(candidate).string();
+        }
+
+        if (!probe.has_parent_path() || probe == probe.parent_path())
+        {
+            break;
+        }
+        probe = probe.parent_path();
+    }
+
+    return raw_path;
+}
 }  // namespace
 
 ProjectConfig ConfigLoader::LoadFromFile(const std::string &path)
 {
-    std::ifstream input(path);
+    const fs::path resolved_config_path = FindExistingPathByAscending(fs::path(path));
+    const std::string effective_config_path =
+        resolved_config_path.empty() ? path : resolved_config_path.string();
+
+    std::ifstream input(effective_config_path);
     if (!input)
     {
         throw std::runtime_error("Failed to open config file: " + path);
@@ -56,13 +149,25 @@ ProjectConfig ConfigLoader::LoadFromFile(const std::string &path)
     ProjectConfig config;
 
     const auto &sim = root.at("simulation");
-    config.simulation.mesh_path = sim.at("mesh_path").get<std::string>();
+    config.simulation.mesh_path = ResolveSimulationPathForRead(
+        sim.at("mesh_path").get<std::string>(), resolved_config_path);
     config.simulation.order = ReadOrDefault<int>(sim, "order", 1);
     config.simulation.uniform_refinement_levels =
         ReadOrDefault<int>(sim, "uniform_refinement_levels", 0);
     config.simulation.output_dir = ReadOrDefault<std::string>(sim, "output_dir", "results");
     config.simulation.log_level = ReadOrDefault<std::string>(sim, "log_level", "info");
     config.simulation.solver = ReadOrDefault<std::string>(sim, "solver", "pcg");
+    config.simulation.assembly_mode = ReadOrDefault<std::string>(sim, "assembly_mode", "serial");
+
+    for (auto &ch : config.simulation.assembly_mode)
+    {
+        ch = static_cast<char>(::tolower(static_cast<unsigned char>(ch)));
+    }
+    if (config.simulation.assembly_mode != "serial" &&
+        config.simulation.assembly_mode != "parallel")
+    {
+        throw std::runtime_error("simulation.assembly_mode must be 'serial' or 'parallel'.");
+    }
 
     if (root.contains("materials"))
     {

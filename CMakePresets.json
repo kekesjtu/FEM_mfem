@@ -7,10 +7,27 @@
   },
   "configurePresets": [
     {
+      "name": "base-linux-debug",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "/usr/bin/mpicc",
+        "CMAKE_CXX_COMPILER": "/usr/bin/mpicxx",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
       "name": "base-mingw-debug",
       "hidden": true,
       "generator": "MinGW Makefiles",
-      "binaryDir": "${sourceDir}/build",
+      "binaryDir": "${sourceDir}/build/mingw-debug",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_C_COMPILER": "E:/msys64/ucrt64/bin/gcc.exe",
@@ -19,7 +36,37 @@
       }
     },
     {
-      "name": "mfem-bundled-debug", //用于工作区内mfem/源代码的配置预设
+      "name": "mfem-bundled-linux-debug",
+      "displayName": "MFEM Bundled (Linux/WSL Debug)",
+      "description": "Use workspace mfem/ source via add_subdirectory on Linux/WSL",
+      "inherits": "base-linux-debug",
+      "cacheVariables": {
+        "FEM_USE_SYSTEM_MFEM": "OFF",
+        "MFEM_USE_MPI": "ON",
+        "MFEM_USE_METIS": "ON",
+        "MFEM_USE_SUITESPARSE": "ON",
+        "HYPRE_INCLUDE_DIRS": "/usr/include/hypre",
+        "HYPRE_LIBRARIES": "/usr/lib/x86_64-linux-gnu/libHYPRE.so",
+        "MFEM_FETCH_HYPRE": "OFF",
+        "MFEM_FETCH_METIS": "OFF",
+        "MFEM_FETCH_TPLS": "OFF"
+      }
+    },
+    {
+      "name": "mfem-system-linux-debug",
+      "displayName": "MFEM System (Linux/WSL Debug)",
+      "description": "Use installed MFEM package via find_package(mfem) on Linux/WSL",
+      "inherits": "base-linux-debug",
+      "cacheVariables": {
+        "FEM_USE_SYSTEM_MFEM": "ON",
+        "MFEM_USE_MPI": "ON",
+        "MFEM_USE_METIS": "ON",
+        "MFEM_USE_SUITESPARSE": "ON",
+        "MFEM_DIR": "$env{MFEM_DIR}"
+      }
+    },
+    {
+      "name": "mfem-bundled-debug",
       "displayName": "MFEM Bundled (Debug)",
       "description": "Use workspace mfem/ source via add_subdirectory",
       "inherits": "base-mingw-debug",
@@ -28,7 +75,7 @@
       }
     },
     {
-      "name": "mfem-system-debug", //用于系统安装的MFEM包的配置预设
+      "name": "mfem-system-debug",
       "displayName": "MFEM System (Debug)",
       "description": "Use installed MFEM package via find_package(mfem)",
       "inherits": "base-mingw-debug",
@@ -39,6 +86,16 @@
     }
   ],
   "buildPresets": [
+    {
+      "name": "build-bundled-linux-debug",
+      "displayName": "Build Bundled Linux/WSL Debug",
+      "configurePreset": "mfem-bundled-linux-debug"
+    },
+    {
+      "name": "build-system-linux-debug",
+      "displayName": "Build System Linux/WSL Debug",
+      "configurePreset": "mfem-system-linux-debug"
+    },
     {
       "name": "build-bundled-debug",
       "displayName": "Build Bundled Debug",

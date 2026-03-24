@@ -28,16 +28,16 @@ std::unique_ptr<ILinearSolver> CreateLinearSolver(const std::string &solver_name
     {
         return std::make_unique<MfemPcgSolver>(rel_tol, abs_tol, max_iter, print_level);
     }
-    if (normalized == "amgcl" || normalized == "amg")
+    if (normalized == "amg")
     {
         return std::make_unique<MfemAmgSolver>(rel_tol, abs_tol, max_iter, print_level);
     }
-    if (normalized == "umfpack" || normalized == "umpack")
+    if (normalized == "umfpack")
     {
         return std::make_unique<MfemUmfpackSolver>();
     }
 
     throw std::runtime_error("Unsupported solver type: '" + solver_name +
-                             "'. Supported solvers: pcg, amgcl (alias: amg), umfpack.");
+                             "'. Supported solvers: pcg, amg, umfpack.");
 }
 }  // namespace fem::solver

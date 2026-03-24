@@ -1,8 +1,12 @@
 #include "fem/app/FieldRunnerCommon.hpp"
 
 #include "fem/assembly/MfemLinearElasticityAssembler.hpp"
+#include "fem/assembly/MfemParallelLinearElasticityAssembler.hpp"
+#include "fem/assembly/MfemParallelPoissonAssembler.hpp"
 #include "fem/assembly/MfemPoissonAssembler.hpp"
 #include "fem/fe/MechanicalFeContext.hpp"
+#include "fem/fe/ParallelMechanicalFeContext.hpp"
+#include "fem/fe/ParallelScalarFeContext.hpp"
 #include "fem/fe/ScalarFeContext.hpp"
 #include "fem/frontend/Expression.hpp"
 #include "fem/mapping/CoefficientFactory.hpp"
@@ -158,6 +162,24 @@ std::string FormatIntList(const std::vector<int> &values)
     }
     return oss.str();
 }
+
+std::string ParallelAwareOutputPath(const std::string &path)
+{
+#if defined(MFEM_USE_MPI)
+    if (mfem::Mpi::IsInitialized() && mfem::Mpi::WorldSize() > 1)
+    {
+        const int rank = mfem::Mpi::WorldRank();
+        const std::string suffix = ".rank" + std::to_string(rank);
+        const std::size_t dot = path.find_last_of('.');
+        if (dot == std::string::npos)
+        {
+            return path + suffix;
+        }
+        return path.substr(0, dot) + suffix + path.substr(dot);
+    }
+#endif
+    return path;
+}
 }  // namespace
 
 void RequireDomainMaterialsCoverAllDomains(const mfem::Mesh &mesh,
@@ -254,15 +276,26 @@ ScalarBoundarySetup BuildScalarBoundarySetup(const mfem::Mesh &mesh,
 void SolveScalarPoissonSystem(mfem::FiniteElementSpace &space, mfem::Coefficient &diffusion,
                               mfem::Coefficient &source, const ScalarBoundarySetup &boundaries,
                               double dirichlet_value, int max_iterations,
-                              const std::string &solver_name, mfem::GridFunction &solution)
+                              const std::string &solver_name,
+                              const std::string &assembly_mode,
+                              mfem::GridFunction &solution)
 {
     fem::assembly::PoissonAssemblyInput input{
         space, diffusion, source, boundaries.essential_marker, {}, {}, dirichlet_value};
     input.dirichlet_conditions = boundaries.dirichlet_conditions;
     input.robin_conditions = boundaries.robin_conditions;
 
-    fem::assembly::MfemPoissonAssembler assembler;
-    auto assembled = assembler.Assemble(input, solution);
+    std::unique_ptr<fem::assembly::IPoissonAssembler> assembler;
+    if (assembly_mode == "parallel")
+    {
+        assembler = std::make_unique<fem::assembly::MfemParallelPoissonAssembler>();
+    }
+    else
+    {
+        assembler = std::make_unique<fem::assembly::MfemPoissonAssembler>();
+    }
+
+    auto assembled = assembler->Assemble(input, solution);
 
     auto linear_solver =
         fem::solver::CreateLinearSolver(solver_name, 1e-10, 0.0, max_iterations, 0);
@@ -274,11 +307,24 @@ void SolveScalarFieldOnContext(fem::fe::ScalarFeContext &context,
                                const fem::frontend::FieldConfig &field,
                                mfem::Coefficient &diffusion, mfem::Coefficient &source,
                                int max_iterations, const std::string &solver_name,
+                                                             const std::string &assembly_mode,
                                mfem::GridFunction &solution)
 {
     const ScalarBoundarySetup boundaries = BuildScalarBoundarySetup(context.Mesh(), field);
     SolveScalarPoissonSystem(context.Space(), diffusion, source, boundaries, field.dirichlet_value,
-                             max_iterations, solver_name, solution);
+                                                         max_iterations, solver_name, assembly_mode, solution);
+}
+
+void SolveScalarFieldOnParallelContext(fem::fe::ParallelScalarFeContext &context,
+                                                                             const fem::frontend::FieldConfig &field,
+                                                                             mfem::Coefficient &diffusion, mfem::Coefficient &source,
+                                                                             int max_iterations, const std::string &solver_name,
+                                                                             const std::string &assembly_mode,
+                                                                             mfem::GridFunction &solution)
+{
+        const ScalarBoundarySetup boundaries = BuildScalarBoundarySetup(context.Mesh(), field);
+        SolveScalarPoissonSystem(context.Space(), diffusion, source, boundaries, field.dirichlet_value,
+                                                         max_iterations, solver_name, assembly_mode, solution);
 }
 
 std::unique_ptr<mfem::Coefficient> BuildPiecewiseDomainCoefficient(
@@ -564,6 +610,37 @@ FieldStatistics ComputeFieldStatistics(const mfem::GridFunction &field)
     return stats;
 }
 
+FieldStatistics ComputeGlobalFieldStatistics(const mfem::ParGridFunction &field)
+{
+    FieldStatistics local_stats = ComputeFieldStatistics(static_cast<const mfem::GridFunction &>(field));
+
+#if defined(MFEM_USE_MPI)
+    // Perform global reductions to collect min, max, mean from all ranks
+    double global_min = local_stats.min_value;
+    double global_max = local_stats.max_value;
+    double local_count = static_cast<double>(field.Size() - local_stats.nan_count);
+    double global_sum = local_stats.mean_value * local_count;
+    int global_nan_count = local_stats.nan_count;
+    int local_size = field.Size();
+    int global_size = 0;
+
+    MPI_Allreduce(&local_stats.min_value, &global_min, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+    MPI_Allreduce(&local_stats.max_value, &global_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(&global_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    MPI_Allreduce(&local_stats.nan_count, &global_nan_count, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    MPI_Allreduce(&local_size, &global_size, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+
+    FieldStatistics global_stats;
+    global_stats.min_value = global_min;
+    global_stats.max_value = global_max;
+    global_stats.mean_value = global_sum / static_cast<double>(global_size - global_nan_count);
+    global_stats.nan_count = global_nan_count;
+    return global_stats;
+#else
+    return local_stats;
+#endif
+}
+
 PiecewiseVectorCoefficientStorage BuildPiecewiseDomainVectorCoefficient(
     const mfem::Mesh &mesh, int dim, const std::vector<double> &default_value,
     const std::unordered_map<int, std::vector<double>> &overrides)
@@ -590,11 +667,36 @@ int RunMechanicalFieldInternal(const fem::frontend::ProjectConfig &config,
                                fem::material::MaterialDatabase &materials,
                                mfem::Coefficient *temperature_by_domain)
 {
-    fem::fe::MechanicalFeContext fe_context(config.simulation.mesh_path, config.simulation.order,
-                                            config.simulation.uniform_refinement_levels);
-    mfem::Mesh &mesh = fe_context.Mesh();
-    mfem::FiniteElementSpace &space = fe_context.Space();
-    const int dim = fe_context.Dimension();
+    const bool use_parallel_assembly = (config.simulation.assembly_mode == "parallel");
+
+    std::unique_ptr<fem::fe::MechanicalFeContext> serial_context;
+    std::unique_ptr<fem::fe::ParallelMechanicalFeContext> parallel_context;
+
+    mfem::Mesh *mesh_ptr = nullptr;
+    mfem::FiniteElementSpace *space_ptr = nullptr;
+    int dim = 0;
+
+    if (use_parallel_assembly)
+    {
+        parallel_context = std::make_unique<fem::fe::ParallelMechanicalFeContext>(
+            config.simulation.mesh_path, config.simulation.order,
+            config.simulation.uniform_refinement_levels);
+        mesh_ptr = &parallel_context->Mesh();
+        space_ptr = &parallel_context->Space();
+        dim = parallel_context->Dimension();
+    }
+    else
+    {
+        serial_context = std::make_unique<fem::fe::MechanicalFeContext>(
+            config.simulation.mesh_path, config.simulation.order,
+            config.simulation.uniform_refinement_levels);
+        mesh_ptr = &serial_context->Mesh();
+        space_ptr = &serial_context->Space();
+        dim = serial_context->Dimension();
+    }
+
+    mfem::Mesh &mesh = *mesh_ptr;
+    mfem::FiniteElementSpace &space = *space_ptr;
 
     RequireDomainMaterialsCoverAllDomains(mesh, config, "mechanical field");
 
@@ -652,7 +754,9 @@ int RunMechanicalFieldInternal(const fem::frontend::ProjectConfig &config,
     std::unique_ptr<mfem::PWConstCoefficient> alpha_by_domain;
     std::unique_ptr<mfem::H1_FECollection> thermal_interp_fec;
     std::unique_ptr<mfem::FiniteElementSpace> thermal_interp_space;
+    std::unique_ptr<mfem::ParFiniteElementSpace> thermal_interp_parallel_space;
     std::unique_ptr<mfem::GridFunction> thermal_interp;
+    std::unique_ptr<mfem::ParGridFunction> thermal_interp_parallel;
     std::unique_ptr<mfem::GridFunctionCoefficient> thermal_interp_coeff;
     mfem::Coefficient *temperature_for_mechanical = nullptr;
     if (temperature_by_domain && field.enable_thermal_strain_coupling)
@@ -670,17 +774,54 @@ int RunMechanicalFieldInternal(const fem::frontend::ProjectConfig &config,
             mesh, config, materials, coupled_variable_names, default_thermal_expansion_material);
 
         thermal_interp_fec = std::make_unique<mfem::H1_FECollection>(config.simulation.order, dim);
-        thermal_interp_space =
-            std::make_unique<mfem::FiniteElementSpace>(&mesh, thermal_interp_fec.get());
-        thermal_interp = std::make_unique<mfem::GridFunction>(thermal_interp_space.get());
-        thermal_interp->ProjectCoefficient(*temperature_by_domain);
-        thermal_interp_coeff =
-            std::make_unique<mfem::GridFunctionCoefficient>(thermal_interp.get());
+        if (use_parallel_assembly)
+        {
+            auto *par_mesh = dynamic_cast<mfem::ParMesh *>(&mesh);
+            if (!par_mesh)
+            {
+                throw std::runtime_error(
+                    "Parallel mechanical path expects ParMesh for thermal interpolation.");
+            }
+            thermal_interp_parallel_space = std::make_unique<mfem::ParFiniteElementSpace>(
+                par_mesh, thermal_interp_fec.get());
+            thermal_interp_parallel =
+                std::make_unique<mfem::ParGridFunction>(thermal_interp_parallel_space.get());
+            thermal_interp_parallel->ProjectCoefficient(*temperature_by_domain);
+            thermal_interp_coeff =
+                std::make_unique<mfem::GridFunctionCoefficient>(thermal_interp_parallel.get());
+        }
+        else
+        {
+            thermal_interp_space =
+                std::make_unique<mfem::FiniteElementSpace>(&mesh, thermal_interp_fec.get());
+            thermal_interp = std::make_unique<mfem::GridFunction>(thermal_interp_space.get());
+            thermal_interp->ProjectCoefficient(*temperature_by_domain);
+            thermal_interp_coeff =
+                std::make_unique<mfem::GridFunctionCoefficient>(thermal_interp.get());
+        }
         temperature_for_mechanical = thermal_interp_coeff.get();
     }
 
-    mfem::GridFunction displacement(&space);
-    displacement = 0.0;
+    std::unique_ptr<mfem::GridFunction> displacement;
+    std::unique_ptr<mfem::ParGridFunction> parallel_displacement;
+    if (use_parallel_assembly)
+    {
+        auto *par_space = dynamic_cast<mfem::ParFiniteElementSpace *>(&space);
+        if (!par_space)
+        {
+            throw std::runtime_error("Parallel mechanical path expects ParFiniteElementSpace.");
+        }
+        parallel_displacement = std::make_unique<mfem::ParGridFunction>(par_space);
+        parallel_displacement->operator=(0.0);
+    }
+    else
+    {
+        displacement = std::make_unique<mfem::GridFunction>(&space);
+        displacement->operator=(0.0);
+    }
+    mfem::GridFunction &displacement_ref =
+        use_parallel_assembly ? static_cast<mfem::GridFunction &>(*parallel_displacement)
+                              : static_cast<mfem::GridFunction &>(*displacement);
 
     fem::assembly::LinearElasticityInput input{space,
                                                *lame.lambda,
@@ -703,13 +844,22 @@ int RunMechanicalFieldInternal(const fem::frontend::ProjectConfig &config,
         input.temperature = temperature_for_mechanical;
     }
 
-    fem::assembly::MfemLinearElasticityAssembler assembler;
-    auto assembled = assembler.Assemble(input, displacement);
+    std::unique_ptr<fem::assembly::IMechanicalAssembler> assembler;
+    if (use_parallel_assembly)
+    {
+        assembler = std::make_unique<fem::assembly::MfemParallelLinearElasticityAssembler>();
+    }
+    else
+    {
+        assembler = std::make_unique<fem::assembly::MfemLinearElasticityAssembler>();
+    }
+
+    auto assembled = assembler->Assemble(input, displacement_ref);
 
     auto linear_solver =
         fem::solver::CreateLinearSolver(config.simulation.solver, 1e-10, 0.0, 2000, 0);
     linear_solver->Solve(*assembled.A.Ptr(), assembled.B, assembled.X);
-    assembled.bilinear->RecoverFEMSolution(assembled.X, *assembled.linear, displacement);
+    assembled.bilinear->RecoverFEMSolution(assembled.X, *assembled.linear, displacement_ref);
 
     mfem::H1_FECollection von_fec(1, dim);
     mfem::FiniteElementSpace von_space(&mesh, &von_fec);
@@ -726,23 +876,28 @@ int RunMechanicalFieldInternal(const fem::frontend::ProjectConfig &config,
     if (field.enable_stress_postprocess)
     {
         fem::post::MechanicalPostProcessor::FillVonMisesNodalField(
-            mesh, displacement, fem::post::LameParameters{*lame.lambda, *lame.mu}, von_space,
+            mesh, displacement_ref, fem::post::LameParameters{*lame.lambda, *lame.mu}, von_space,
             von_mises, thermal_post.get());
 
         const std::string csv_path =
             config.simulation.output_dir + "/" + field.name + "_element_stress.csv";
         fem::post::MechanicalPostProcessor::ExportElementStressCsv(
-            csv_path, mesh, displacement, fem::post::LameParameters{*lame.lambda, *lame.mu},
+            ParallelAwareOutputPath(csv_path), mesh,
+            displacement_ref, fem::post::LameParameters{*lame.lambda, *lame.mu},
             thermal_post.get());
 
         fem::post::SolutionTextExporter::ExportScalarNodalTxt(
-            config.simulation.output_dir + "/" + field.name + "_von_mises.txt", field.name, mesh,
+            ParallelAwareOutputPath(config.simulation.output_dir + "/" + field.name +
+                                    "_von_mises.txt"),
+            field.name, mesh,
             von_mises, "von_mises");
     }
 
     fem::post::SolutionTextExporter::ExportVectorNodalTxt(
-        config.simulation.output_dir + "/" + field.name + "_solution.txt", field.name, mesh,
-        displacement, "u");
+        ParallelAwareOutputPath(config.simulation.output_dir + "/" + field.name +
+                                "_solution.txt"),
+        field.name, mesh,
+        displacement_ref, "u");
 
     std::filesystem::create_directories(config.simulation.output_dir);
     mfem::ParaViewDataCollection collection(field.name, &mesh);
@@ -750,7 +905,7 @@ int RunMechanicalFieldInternal(const fem::frontend::ProjectConfig &config,
     collection.SetLevelsOfDetail(1);
     collection.SetCycle(0);
     collection.SetTime(0.0);
-    collection.RegisterField("displacement", &displacement);
+    collection.RegisterField("displacement", &displacement_ref);
     if (field.enable_stress_postprocess)
     {
         collection.RegisterField("von_mises", &von_mises);

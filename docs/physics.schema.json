@@ -20,8 +20,13 @@
         "output_dir": { "type": "string", "default": "results" },
         "solver": {
           "type": "string",
-          "enum": ["pcg", "amgcl", "umfpack", "umpack"],
+          "enum": ["pcg", "amg", "umfpack"],
           "default": "pcg"
+        },
+        "assembly_mode": {
+          "type": "string",
+          "enum": ["serial", "parallel"],
+          "default": "serial"
         },
         "log_level": {
           "type": "string",

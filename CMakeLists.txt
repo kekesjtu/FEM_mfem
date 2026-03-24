@@ -92,7 +92,7 @@ option(FEM_USE_SYSTEM_MFEM "Use externally installed MFEM package" OFF)
 
 if(FEM_USE_SYSTEM_MFEM)
     # 需要在配置时提供 MFEM_DIR，例如：
-    # cmake -DFEM_USE_SYSTEM_MFEM=ON -DMFEM_DIR="C:/path/to/mfem/lib/cmake/mfem" ..
+    # cmake -DFEM_USE_SYSTEM_MFEM=ON -DMFEM_DIR="/path/to/mfem/lib/cmake/mfem" ..
     find_package(mfem REQUIRED CONFIG)
     set(FEM_MFEM_TARGET mfem)
 else()

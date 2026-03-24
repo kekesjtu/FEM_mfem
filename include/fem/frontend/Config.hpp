@@ -14,6 +14,7 @@ struct SimulationConfig
     std::string output_dir = "results";
     std::string log_level = "info";
     std::string solver = "pcg";
+    std::string assembly_mode = "serial";
 };
 
 struct MaterialConfig
