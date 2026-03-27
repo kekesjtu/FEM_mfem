@@ -2,11 +2,13 @@
 # 参考文档: https://clangd.llvm.org/config
 
 CompileFlags:
-  Compiler: x86_64-w64-mingw32-g++
+  # 显式设置编译数据库路径
+  CompilationDatabase: build/linux-debug
   Add:
     - -std=c++17
     - -DMUPARSER_STATIC
     - -Wno-vla-extension
+    - -fopenmp=libgomp  # 显式告知 clangd 使用 libgomp (GCC 的 OpenMP)
   Remove:
     # 移除 clang 不支持的 GCC 特定选项
     - -fdiagnostics-color=always

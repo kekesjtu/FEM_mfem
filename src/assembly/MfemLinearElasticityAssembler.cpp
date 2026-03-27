@@ -1,12 +1,12 @@
 #include "fem/assembly/MfemLinearElasticityAssembler.hpp"
-#include "fem/assembly/LinearElasticityIntegrators.hpp"
+#include "fem/integrator/LinearElasticityIntegrators.hpp"
 
 namespace fem::assembly
 {
 MechanicalSystem MfemLinearElasticityAssembler::Assemble(LinearElasticityInput &input,
                                                          mfem::GridFunction &initial_guess)
 {
-    MechanicalSystem system;
+    AssembledSystem system;
 
     system.bilinear = std::make_unique<mfem::BilinearForm>(&input.space);
     system.bilinear->AddDomainIntegrator(new mfem::ElasticityIntegrator(input.lambda, input.mu));
@@ -15,7 +15,8 @@ MechanicalSystem MfemLinearElasticityAssembler::Assemble(LinearElasticityInput &
         if (normal_bc.marker.Size() > 0)
         {
             system.bilinear->AddBoundaryIntegrator(
-                new NormalDisplacementPenaltyIntegrator(normal_bc.penalty), normal_bc.marker);
+                new integrator::NormalDisplacementPenaltyIntegrator(normal_bc.penalty),
+                normal_bc.marker);
         }
     }
     system.bilinear->Assemble();
@@ -40,9 +41,9 @@ MechanicalSystem MfemLinearElasticityAssembler::Assemble(LinearElasticityInput &
     }
     if (input.thermal_expansion_secant && input.temperature)
     {
-        system.linear->AddDomainIntegrator(
-            new ThermalStrainLFIntegrator(input.lambda, input.mu, *input.thermal_expansion_secant,
-                                          *input.temperature, input.reference_temperature));
+        system.linear->AddDomainIntegrator(new integrator::ThermalStrainLFIntegrator(
+            input.lambda, input.mu, *input.thermal_expansion_secant, *input.temperature,
+            input.reference_temperature));
     }
     system.linear->Assemble();
 

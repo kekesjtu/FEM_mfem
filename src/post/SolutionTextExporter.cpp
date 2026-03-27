@@ -11,6 +11,24 @@ namespace fem::post
 {
 namespace
 {
+std::string ParallelAwareOutputPath(const std::string &path)
+{
+#if defined(MFEM_USE_MPI)
+    if (mfem::Mpi::IsInitialized() && mfem::Mpi::WorldSize() > 1)
+    {
+        const int rank = mfem::Mpi::WorldRank();
+        const std::string suffix = ".rank" + std::to_string(rank);
+        const std::size_t dot = path.find_last_of('.');
+        if (dot == std::string::npos)
+        {
+            return path + suffix;
+        }
+        return path.substr(0, dot) + suffix + path.substr(dot);
+    }
+#endif
+    return path;
+}
+
 struct VertexSampleLocation
 {
     int element_id = -1;
@@ -86,12 +104,13 @@ void SolutionTextExporter::ExportScalarNodalTxt(const std::string &txt_path,
                                                 const mfem::GridFunction &scalar_field,
                                                 const std::string &value_name)
 {
-    std::filesystem::create_directories(std::filesystem::path(txt_path).parent_path());
+    const std::string resolved_path = ParallelAwareOutputPath(txt_path);
+    std::filesystem::create_directories(std::filesystem::path(resolved_path).parent_path());
 
-    std::ofstream out(txt_path);
+    std::ofstream out(resolved_path);
     if (!out)
     {
-        throw std::runtime_error("Failed to open output txt file: " + txt_path);
+        throw std::runtime_error("Failed to open output txt file: " + resolved_path);
     }
     out << std::setprecision(17);
 
@@ -129,12 +148,13 @@ void SolutionTextExporter::ExportVectorNodalTxt(const std::string &txt_path,
                                                 const mfem::GridFunction &vector_field,
                                                 const std::string &prefix_name)
 {
-    std::filesystem::create_directories(std::filesystem::path(txt_path).parent_path());
+    const std::string resolved_path = ParallelAwareOutputPath(txt_path);
+    std::filesystem::create_directories(std::filesystem::path(resolved_path).parent_path());
 
-    std::ofstream out(txt_path);
+    std::ofstream out(resolved_path);
     if (!out)
     {
-        throw std::runtime_error("Failed to open output txt file: " + txt_path);
+        throw std::runtime_error("Failed to open output txt file: " + resolved_path);
     }
     out << std::setprecision(17);
 

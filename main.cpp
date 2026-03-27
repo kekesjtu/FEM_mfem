@@ -1,5 +1,3 @@
-#include "fem/app/Application.hpp"
-
 #include "spdlog/spdlog.h"
 
 #include <exception>
@@ -7,7 +5,7 @@
 
 int main(int argc, char *argv[])
 {
-    const std::string config_path = (argc > 1) ? argv[1] : "configs/busbar_electro_thermal_no_iteration_order2.json";
+    const std::string config_path = (argc > 1) ? argv[1] : "configs/busbar_electro_thermal_iteration.json";
 
     try
     {

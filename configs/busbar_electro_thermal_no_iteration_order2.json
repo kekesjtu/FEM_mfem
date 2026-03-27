@@ -31,7 +31,6 @@
   },
   "fields": [
     {
-      "name": "voltage",
       "type": "electrostatic",
       "source_default": "0.0",
       "dirichlet_boundary_conditions": [
@@ -43,11 +42,9 @@
           "bdr_attributes": [8, 15],
           "value": 0.0
         }
-      ],
-      "enable_stress_postprocess": false
+      ]
     },
     {
-      "name": "temperature",
       "type": "thermal",
       "source_default": "0.0",
       "robin_boundary_conditions": [
@@ -59,8 +56,7 @@
           "l": 5.0,
           "q": 1465.75
         }
-      ],
-      "enable_stress_postprocess": false
+      ]
     }
   ]
 }

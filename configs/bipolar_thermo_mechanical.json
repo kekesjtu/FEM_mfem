@@ -34,7 +34,6 @@
   },
   "fields": [
     {
-      "name": "temperature",
       "type": "thermal",
       "source_default": "0.0",
       "source_by_domain": {
@@ -53,11 +52,9 @@
           "l": 5.0,
           "q": 1465.75
         }
-      ],
-      "enable_stress_postprocess": false
+      ]
     },
     {
-      "name": "displacement",
       "type": "mechanical",
       "normal_displacement_boundary_conditions": [
         {
@@ -77,9 +74,7 @@
           "value": 8000000.0
         }
       ],
-      "reference_temperature": 273.15,
-      "enable_thermal_strain_coupling": true,
-      "enable_stress_postprocess": true
+      "reference_temperature": 273.15
     }
   ]
 }

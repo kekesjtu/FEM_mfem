@@ -2,8 +2,6 @@
 
 #include <memory>
 #include <string>
-#include <unordered_map>
-#include <vector>
 
 namespace mu
 {
@@ -18,29 +16,26 @@ struct EvalContext
     double y = 0.0;
     double z = 0.0;
     double t = 0.0;
-    std::unordered_map<std::string, double> coupled_fields;
+    double T = 0.0;
 };
 
-class ScalarExpression
+class Expression
 {
   public:
-    explicit ScalarExpression(std::string expression,
-                              std::vector<std::string> coupled_variable_names = {});
+    explicit Expression(std::string expression);
 
-    ScalarExpression(const ScalarExpression &other);
-    ScalarExpression &operator=(const ScalarExpression &other);
-    ScalarExpression(ScalarExpression &&other) noexcept;
-    ScalarExpression &operator=(ScalarExpression &&other) noexcept;
-    ~ScalarExpression();
+    Expression(const Expression &other);
+    Expression &operator=(const Expression &other);
+    Expression(Expression &&other) noexcept;
+    Expression &operator=(Expression &&other) noexcept;
+    ~Expression();
 
     double Evaluate(const EvalContext &ctx) const;
-    const std::string &Raw() const;
 
   private:
     void InitializeParser();
 
     std::string expression_;
-    std::vector<std::string> coupled_variable_names_;
     bool is_constant_ = false;
     double constant_value_ = 0.0;
 
@@ -48,7 +43,7 @@ class ScalarExpression
     mutable double y_ = 0.0;
     mutable double z_ = 0.0;
     mutable double t_ = 0.0;
-    mutable std::unordered_map<std::string, double> coupled_storage_;
+    mutable double T_ = 0.0;
     std::unique_ptr<mu::Parser> parser_;
 };
 }  // namespace fem::frontend

@@ -24,6 +24,10 @@ void MfemPcgSolver::Solve(mfem::Operator &A, const mfem::Vector &b, mfem::Vector
         solver.SetPreconditioner(preconditioner);
         solver.SetOperator(*sparse_matrix);
         solver.Mult(b, x);
+        if (!solver.GetConverged())
+        {
+            throw std::runtime_error("PCG failed to converge on serial SparseMatrix.");
+        }
         return;
     }
 

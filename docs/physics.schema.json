@@ -28,6 +28,39 @@
           "enum": ["serial", "parallel"],
           "default": "serial"
         },
+        "picard_max_iterations": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30
+        },
+        "picard_tolerance": {
+          "type": "number",
+          "exclusiveMinimum": 0.0,
+          "default": 1e-6
+        },
+        "picard_relaxation": {
+          "type": "number",
+          "exclusiveMinimum": 0.0,
+          "maximum": 1.0,
+          "default": 1.0
+        },
+        "transient_enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "transient_t_start": {
+          "type": "number",
+          "default": 0.0
+        },
+        "transient_t_end": {
+          "type": "number",
+          "default": 1.0
+        },
+        "transient_dt": {
+          "type": "number",
+          "exclusiveMinimum": 0.0,
+          "default": 1.0
+        },
         "log_level": {
           "type": "string",
           "enum": ["trace", "debug", "info", "warn", "error", "critical"],
@@ -65,25 +98,17 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["name", "type"],
+        "required": ["type"],
         "properties": {
-          "name": { "type": "string" },
           "type": {
             "type": "string",
             "enum": ["electrostatic", "thermal", "mechanical"]
           },
-          "source": { "type": "string", "default": "0.0" },
           "source_default": { "type": "string", "default": "0.0" },
           "source_by_domain": {
             "type": "object",
             "additionalProperties": { "type": "string" },
             "description": "Domain attribute -> source expression"
-          },
-          "dirichlet_value": { "type": "number", "default": 0.0 },
-          "dirichlet_bdr_attributes": {
-            "type": "array",
-            "items": { "type": "integer", "minimum": 1 },
-            "default": []
           },
           "dirichlet_boundary_conditions": {
             "type": "array",
@@ -100,17 +125,6 @@
               },
               "additionalProperties": false
             }
-          },
-          "robin_l": { "type": "number", "default": 0.0 },
-          "robin_q": { "type": "number", "default": 0.0 },
-          "robin_bdr_attributes": {
-            "type": "array",
-            "items": { "type": "integer", "minimum": 1 },
-            "default": []
-          },
-          "robin_on_remaining_boundaries": {
-            "type": "boolean",
-            "default": false
           },
           "robin_boundary_conditions": {
             "type": "array",
@@ -151,26 +165,6 @@
             "maxItems": 3,
             "default": [0.0, 0.0, 0.0]
           },
-          "traction_boundary_conditions": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["bdr_attributes", "value"],
-              "properties": {
-                "bdr_attributes": {
-                  "type": "array",
-                  "items": { "type": "integer", "minimum": 1 }
-                },
-                "value": {
-                  "type": "array",
-                  "items": { "type": "number" },
-                  "minItems": 3,
-                  "maxItems": 3
-                }
-              },
-              "additionalProperties": false
-            }
-          },
           "pressure_boundary_conditions": {
             "type": "array",
             "items": {
@@ -204,15 +198,8 @@
           },
           "reference_temperature": {
             "type": "number",
-            "default": 293.15
-          },
-          "enable_thermal_strain_coupling": {
-            "type": "boolean",
-            "default": true
-          },
-          "enable_stress_postprocess": {
-            "type": "boolean",
-            "default": true
+            "default": 293.15,
+            "description": "Used for thermal expansion calculations in mechanical fields. Default is 20C in Kelvin."
           }
         },
         "additionalProperties": false

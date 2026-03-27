@@ -2,8 +2,10 @@
 
 #include "mfem.hpp"
 
-namespace fem::assembly
+namespace fem::integrator
 {
+
+// 
 class CustomDiffusionIntegrator : public mfem::DiffusionIntegrator
 {
   public:

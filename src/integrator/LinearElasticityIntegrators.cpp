@@ -1,8 +1,8 @@
-#include "fem/assembly/LinearElasticityIntegrators.hpp"
+#include "fem/integrator/LinearElasticityIntegrators.hpp"
 
 #include <cmath>
 
-namespace fem::assembly
+namespace fem::integrator
 {
 ThermalStrainLFIntegrator::ThermalStrainLFIntegrator(mfem::Coefficient &lambda,
                                                      mfem::Coefficient &mu,

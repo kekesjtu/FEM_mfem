@@ -41,15 +41,7 @@
       "description": "Use workspace mfem/ source via add_subdirectory on Linux/WSL",
       "inherits": "base-linux-debug",
       "cacheVariables": {
-        "FEM_USE_SYSTEM_MFEM": "OFF",
-        "MFEM_USE_MPI": "ON",
-        "MFEM_USE_METIS": "ON",
-        "MFEM_USE_SUITESPARSE": "ON",
-        "HYPRE_INCLUDE_DIRS": "/usr/include/hypre",
-        "HYPRE_LIBRARIES": "/usr/lib/x86_64-linux-gnu/libHYPRE.so",
-        "MFEM_FETCH_HYPRE": "OFF",
-        "MFEM_FETCH_METIS": "OFF",
-        "MFEM_FETCH_TPLS": "OFF"
+        "FEM_USE_SYSTEM_MFEM": "OFF"
       }
     },
     {
@@ -82,6 +74,18 @@
       "cacheVariables": {
         "FEM_USE_SYSTEM_MFEM": "ON",
         "MFEM_DIR": "$env{MFEM_DIR}"
+      }
+    },
+    {
+      "name": "linux-release",
+      "displayName": "MFEM System (Release)",
+      "description": "设置 Ninja 生成器、版本和安装目录",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}"
       }
     }
   ],

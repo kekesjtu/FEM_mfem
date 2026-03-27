@@ -17,11 +17,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# 设置构建类型默认为Debug
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Debug)
-endif()
-
 # 编译选项
 if(MSVC)
     add_compile_options(/W4)
@@ -30,7 +25,7 @@ else()
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         add_compile_options(-g)
     elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-        add_compile_options(-O3)
+        add_compile_options(-Ofast)
     endif()
 endif()
 
@@ -89,6 +84,17 @@ endif()
 # 如需切换到系统安装版 MFEM，可开启 FEM_USE_SYSTEM_MFEM。
 # ==============================================================================
 option(FEM_USE_SYSTEM_MFEM "Use externally installed MFEM package" OFF)
+
+set(MFEM_USE_MPI ON CACHE BOOL "Enable MPI support in MFEM" FORCE)
+if (MFEM_USE_MPI)
+    message(STATUS "Configuring MFEM with MPI support")
+    find_package(MPI REQUIRED)
+    set(MFEM_USE_METIS_5 ON)
+    set(MFEM_USE_HYPRE ON)
+    set(MFEM_USE_SUITESPARSE ON)
+    set(HYPRE_INCLUDE_DIRS /usr/include/hypre)
+    set(HYPRE_LIBRARIES /usr/lib/x86_64-linux-gnu/libHYPRE.so)
+endif()
 
 if(FEM_USE_SYSTEM_MFEM)
     # 需要在配置时提供 MFEM_DIR，例如：

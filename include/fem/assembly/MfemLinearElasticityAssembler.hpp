@@ -1,13 +1,28 @@
 #pragma once
 
-#include "fem/assembly/IMechanicalAssembler.hpp"
+#include "fem/frontend/Config.hpp"
+#include "mfem.hpp"
 
 namespace fem::assembly
 {
-class MfemLinearElasticityAssembler : public IMechanicalAssembler
+class MfemLinearElasticityAssembler
 {
+    struct AssembledSystem
+    {
+        std::unique_ptr<mfem::BilinearForm> bilinear;
+        std::unique_ptr<mfem::LinearForm> linear;
+        mfem::OperatorPtr A;
+        mfem::Vector X;
+        mfem::Vector B;
+        mfem::Array<int> essential_tdofs;
+    };
+
   public:
-    MechanicalSystem Assemble(LinearElasticityInput &input,
-                              mfem::GridFunction &initial_guess) override;
+    MfemLinearElasticityAssembler(frontend::ProjectConfig &config)
+        : config_(std::make_shared<frontend::ProjectConfig>(config)){};
+    AssembledSystem Assemble();
+
+  private:
+    std::shared_ptr<frontend::ProjectConfig> config_;
 };
 }  // namespace fem::assembly

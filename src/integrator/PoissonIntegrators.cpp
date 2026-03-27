@@ -1,6 +1,6 @@
-#include "fem/assembly/PoissonIntegrators.hpp"
+#include "fem/integrator/PoissonIntegrators.hpp"
 
-namespace fem::assembly
+namespace fem::integrator
 {
 namespace
 {
