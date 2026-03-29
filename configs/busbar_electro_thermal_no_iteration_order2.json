@@ -4,7 +4,6 @@
     "mesh_path": "mesh_data/busbar_order2.msh",
     "order": 2,
     "uniform_refinement_levels": 0,
-    "assembly_mode": "parallel",
     "solver": "pcg",
     "output_dir": "results/electro_thermal_no_iteration_order2",
     "log_level": "info"
@@ -42,7 +41,8 @@
           "bdr_attributes": [8, 15],
           "value": 0.0
         }
-      ]
+      ],
+      "reference_temperature": 273.15
     },
     {
       "type": "thermal",

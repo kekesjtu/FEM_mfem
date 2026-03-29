@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -13,10 +14,10 @@ struct SimulationConfig
 {
     std::string mesh_path;
     int order = 1;
+    int uniform_refinement_levels = 0;
     std::string output_dir = "results";
     std::string log_level = "info";
     std::string solver = "pcg";
-    std::string assembly_mode = "serial";
     int picard_max_iterations = 30;
     double picard_tolerance = 1.0e-6;
     double picard_relaxation = 1.0;
@@ -24,6 +25,8 @@ struct SimulationConfig
     double transient_t_start = 0.0;
     double transient_t_end = 1.0;
     double transient_dt = 1.0;
+    double transient_output_interval = 10.0;
+    bool adaptive_dt = false;
 };
 
 // 材料数据结构
@@ -39,12 +42,17 @@ struct MaterialDatabase
 
 struct ScalarFieldConfig
 {
-    // 标量边界条件
-    struct BoundaryCondition
+    bool enabled = false;
+
+    struct DirichletBC
     {
-        // 是否是Dirichlet边界条件.
-        // 如果是,则q表示Dirichlet值;如果不是,则l表示Robin边界条件的系数l, q表示Robin边界条件的系数q
-        bool is_dirichlet = true;
+        std::vector<int> bdr_attributes;
+        double value = 0.0;
+    };
+
+    struct RobinBC
+    {
+        std::vector<int> bdr_attributes;
         double l = 0.0;
         double q = 0.0;
     };
@@ -52,40 +60,99 @@ struct ScalarFieldConfig
     std::string type;
     std::string source_default = "0.0";
     std::unordered_map<int, std::string> domain_to_source;
-    std::unordered_map<int, BoundaryCondition> boundary_to_bc;
+    std::vector<DirichletBC> dirichlet_bcs;
+    std::vector<RobinBC> robin_bcs;
+    /// For electrostatic fields: temperature used when evaluating T-dependent conductivity
+    /// expressions in single-field mode or as the starting temperature before Picard coupling.
+    double reference_temperature = 293.15;
 };
 
 struct MechanicalFieldConfig
 {
-    // 向量边界条件
-    struct BoundaryCondition
-    {
-        enum class BCType
-        {
-            FREE,
-            DIRICHLET_FULL,
-            DIRICHLET_NORMAL,
-            NEUMANN_PRESSURE,
-        } type = BCType::FREE;  // 只需要实现这四种,不需要牵引力边界条件
+    bool enabled = false;
 
-        double normal_dirichlet_displacement_value = 0.0;
-        std::vector<double> dirichlet_displacement_value{0.0, 0.0, 0.0};
-        double pressure_value = 0.0;
+    struct DisplacementBC
+    {
+        std::vector<int> bdr_attributes;
+        std::vector<double> value{0.0, 0.0, 0.0};
+    };
+
+    struct NormalDisplacementBC
+    {
+        std::vector<int> bdr_attributes;
+        double penalty = 1.0e12;
+    };
+
+    struct PressureBC
+    {
+        std::vector<int> bdr_attributes;
+        double value = 0.0;
     };
 
     std::string type;
     std::vector<double> body_force_default{0.0, 0.0, 0.0};
     std::unordered_map<int, std::vector<double>> domain_to_body_force;
-    std::unordered_map<int, BoundaryCondition> boundary_to_bc;
-    double reference_temperature = 293.15;  // 用于热-力耦合问题的参考温度，单位K
+    std::vector<DisplacementBC> displacement_bcs;
+    std::vector<NormalDisplacementBC> normal_displacement_bcs;
+    std::vector<PressureBC> pressure_bcs;
+    double reference_temperature = 293.15;
 };
 
 struct FEConfig
 {
-    mfem::Mesh *mesh = nullptr;
-    mfem::FiniteElementCollection *fec = nullptr;
-    mfem::FiniteElementSpace *space = nullptr;
+    std::unique_ptr<mfem::Mesh> mesh;
+    // scalar field FE objects (shared for electrostatic/thermal)
+    std::unique_ptr<mfem::FiniteElementCollection> scalar_fec;
+    std::unique_ptr<mfem::FiniteElementSpace> scalar_fespace;
+    // vector field FE objects (for mechanical)
+    std::unique_ptr<mfem::FiniteElementCollection> vector_fec;
+    std::unique_ptr<mfem::FiniteElementSpace> vector_fespace;
 
+#ifdef MFEM_USE_MPI
+    std::unique_ptr<mfem::ParMesh> pmesh;
+    std::unique_ptr<mfem::ParFiniteElementSpace> par_scalar_fespace;
+    std::unique_ptr<mfem::ParFiniteElementSpace> par_vector_fespace;
+#endif
+
+    /// True if parallel FE spaces are available and should be used.
+    bool IsParallel() const
+    {
+#ifdef MFEM_USE_MPI
+        return pmesh != nullptr;
+#else
+        return false;
+#endif
+    }
+
+    /// Return the active mesh (parallel if available, serial otherwise).
+    mfem::Mesh &GetMesh() const
+    {
+#ifdef MFEM_USE_MPI
+        if (pmesh)
+            return *pmesh;
+#endif
+        return *mesh;
+    }
+
+    /// Return the active scalar FE space.
+    mfem::FiniteElementSpace &GetScalarFESpace() const
+    {
+#ifdef MFEM_USE_MPI
+        if (par_scalar_fespace)
+            return *par_scalar_fespace;
+#endif
+        return *scalar_fespace;
+    }
+
+    /// Return the active vector FE space.
+    mfem::FiniteElementSpace &GetVectorFESpace() const
+    {
+#ifdef MFEM_USE_MPI
+        if (par_vector_fespace)
+            return *par_vector_fespace;
+#endif
+        return *vector_fespace;
+    }
 };
 
 struct ProjectConfig
@@ -97,6 +164,20 @@ struct ProjectConfig
     ScalarFieldConfig thermal_field;
     MechanicalFieldConfig mechanical_field;
 
-    FEConfig fe_config;
+    FEConfig fe;
+
+    bool HasElectricField() const
+    {
+        return electric_field.enabled;
+    }
+    bool HasThermalField() const
+    {
+        return thermal_field.enabled;
+    }
+    bool HasMechanicalField() const
+    {
+        return mechanical_field.enabled;
+    }
+    bool NeedsPicardIteration() const;
 };
 }  // namespace fem::frontend

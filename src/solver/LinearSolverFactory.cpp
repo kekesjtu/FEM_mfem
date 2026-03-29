@@ -1,6 +1,5 @@
 #include "fem/solver/LinearSolverFactory.hpp"
 
-#include "fem/solver/MfemAmgSolver.hpp"
 #include "fem/solver/MfemPcgSolver.hpp"
 #include "fem/solver/MfemUmfpackSolver.hpp"
 
@@ -28,16 +27,12 @@ std::unique_ptr<ILinearSolver> CreateLinearSolver(const std::string &solver_name
     {
         return std::make_unique<MfemPcgSolver>(rel_tol, abs_tol, max_iter, print_level);
     }
-    if (normalized == "amg")
-    {
-        return std::make_unique<MfemAmgSolver>(rel_tol, abs_tol, max_iter, print_level);
-    }
     if (normalized == "umfpack")
     {
         return std::make_unique<MfemUmfpackSolver>();
     }
 
     throw std::runtime_error("Unsupported solver type: '" + solver_name +
-                             "'. Supported solvers: pcg, amg, umfpack.");
+                             "'. Supported solvers: pcg, umfpack.");
 }
 }  // namespace fem::solver

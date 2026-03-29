@@ -1,12 +1,9 @@
 #pragma once
 
+#include "spdlog/spdlog.h"
+
 #include <memory>
 #include <string>
-
-namespace spdlog
-{
-class logger;
-}
 
 namespace fem::log
 {

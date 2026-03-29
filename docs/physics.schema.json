@@ -20,13 +20,8 @@
         "output_dir": { "type": "string", "default": "results" },
         "solver": {
           "type": "string",
-          "enum": ["pcg", "amg", "umfpack"],
+          "enum": ["pcg", "umfpack"],
           "default": "pcg"
-        },
-        "assembly_mode": {
-          "type": "string",
-          "enum": ["serial", "parallel"],
-          "default": "serial"
         },
         "picard_max_iterations": {
           "type": "integer",
@@ -60,6 +55,17 @@
           "type": "number",
           "exclusiveMinimum": 0.0,
           "default": 1.0
+        },
+        "transient_output_interval": {
+          "type": "number",
+          "exclusiveMinimum": 0.0,
+          "default": 10.0,
+          "description": "Time interval between output snapshots. Only snapshots at multiples of this interval are written to the transient text file."
+        },
+        "adaptive_dt": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable adaptive time stepping. When Picard iteration fails to converge, dt is halved and the step is retried. When convergence is fast, dt is increased."
         },
         "log_level": {
           "type": "string",
@@ -158,13 +164,6 @@
               "maxItems": 3
             }
           },
-          "dirichlet_displacement_value": {
-            "type": "array",
-            "items": { "type": "number" },
-            "minItems": 3,
-            "maxItems": 3,
-            "default": [0.0, 0.0, 0.0]
-          },
           "pressure_boundary_conditions": {
             "type": "array",
             "items": {
@@ -176,6 +175,28 @@
                   "items": { "type": "integer", "minimum": 1 }
                 },
                 "value": { "type": "number" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "displacement_boundary_conditions": {
+            "type": "array",
+            "description": "Strongly enforce vector displacement on selected boundaries.",
+            "items": {
+              "type": "object",
+              "required": ["bdr_attributes", "value"],
+              "properties": {
+                "bdr_attributes": {
+                  "type": "array",
+                  "items": { "type": "integer", "minimum": 1 }
+                },
+                "value": {
+                  "type": "array",
+                  "items": { "type": "number" },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "default": [0.0, 0.0, 0.0]
+                }
               },
               "additionalProperties": false
             }
@@ -199,7 +220,7 @@
           "reference_temperature": {
             "type": "number",
             "default": 293.15,
-            "description": "Used for thermal expansion calculations in mechanical fields. Default is 20C in Kelvin."
+            "description": "Reference temperature (K). For mechanical fields: used as stress-free temperature in thermal expansion. For electrostatic fields: used as the initial/fallback temperature when evaluating temperature-dependent conductivity expressions (e.g. before coupling or in single-field mode). Default is 293.15 K (20 °C)."
           }
         },
         "additionalProperties": false

@@ -41,7 +41,8 @@
           "bdr_attributes": [8, 15],
           "value": 0.0
         }
-      ]
+      ],
+      "reference_temperature": 273.15
     },
     {
       "type": "thermal",

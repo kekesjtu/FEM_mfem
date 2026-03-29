@@ -5,25 +5,41 @@
     "order": 1,
     "uniform_refinement_levels": 0,
     "solver": "pcg",
-    "output_dir": "results/electro_thermal_iteration",
+    "output_dir": "results/busbar_transient",
     "log_level": "info",
     "picard_max_iterations": 25,
     "picard_tolerance": 1.0e-6,
-    "picard_relaxation": 1.0
+    "picard_relaxation": 1.0,
+    "transient_t_start": 0,
+    "transient_t_end": 100,
+    "transient_dt": 10,
+    "transient_enabled": true,
+    "transient_output_interval": 10.0,
+    "adaptive_dt": false
   },
   "materials": [
     {
       "name": "copper",
       "properties": {
         "diffusion": "400.0",
-        "electrical_conductivity": "5.998e7/(1.0 + 0.00393 * (T - 293.15))"
+        "electrical_conductivity": "5.998e7/(1.0 + 0.0039 * (T - 293.15))",
+        "young_modulus": "1.1e11",
+        "poisson_ratio": "0.35",
+        "thermal_expansion_secant": "1.7e-5",
+        "density": "8960",
+        "heat_capacity": "385"
       }
     },
     {
       "name": "titanium",
       "properties": {
         "diffusion": "7.5",
-        "electrical_conductivity": "7.407e5"
+        "electrical_conductivity": "7.407e5",
+        "young_modulus": "1.05e11",
+        "poisson_ratio": "0.33",
+        "thermal_expansion_secant": "7.06e-6",
+        "density": "4940",
+        "heat_capacity": "710"
       }
     }
   ],
@@ -61,6 +77,17 @@
           "q": 1465.75
         }
       ]
+    },
+    {
+      "type": "mechanical",
+      "body_force_default": [0.0, 0.0, 0.0],
+      "displacement_boundary_conditions": [
+        {
+          "bdr_attributes": [8, 15, 43],
+          "value": [0.0, 0.0, 0.0]
+        }
+      ],
+      "reference_temperature": 293.15
     }
   ]
 }

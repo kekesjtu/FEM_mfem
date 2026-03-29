@@ -1,0 +1,60 @@
+#include "fem/physics/ElectrostaticFieldSolver.hpp"
+
+#include "fem/assembly/MfemPoissonAssembler.hpp"
+#include "fem/coeff/Coeffmanagaer.hpp"
+#include "fem/log/Logger.hpp"
+#include "fem/solver/LinearSolverFactory.hpp"
+
+namespace fem::physics
+{
+
+ElectrostaticFieldSolver::ElectrostaticFieldSolver(frontend::ProjectConfig &config)
+    : config_(config), voltage_(&config.fe.GetScalarFESpace())
+{
+    voltage_ = 0.0;
+}
+
+void ElectrostaticFieldSolver::SetTemperatureField(mfem::GridFunction *temperature_gf)
+{
+    temperature_gf_ = temperature_gf;
+}
+
+void ElectrostaticFieldSolver::Solve()
+{
+    auto logger = fem::log::Get();
+    logger->info("=== Solving electrostatic field ===");
+
+    const auto &field_config = config_.electric_field;
+
+    // Build electrical conductivity coefficient (sigma), optionally T-dependent
+    coeff::ExpressionCoefficient sigma_coeff("electrical_conductivity", config_.materials,
+                                             config_.fe.GetMesh(), temperature_gf_);
+    if (!temperature_gf_)
+    {
+        sigma_coeff.SetReferenceTemperature(config_.electric_field.reference_temperature);
+    }
+
+    // Source term (usually 0 for electrostatics: -div(sigma grad V) = 0)
+    mfem::ConstantCoefficient source_coeff(0.0);
+
+    // Assemble — boundary marker construction handled by assembler
+    assembly::PoissonAssemblyInput input{
+        config_.fe.GetScalarFESpace(), sigma_coeff, source_coeff, field_config.dirichlet_bcs,
+        field_config.robin_bcs,        0.0,
+    };
+
+    auto system = assembly::MfemPoissonAssembler::Assemble(input, voltage_);
+
+    // Solve
+    auto solver = solver::CreateLinearSolver(config_.simulation.solver, 1e-12, 1e-12, 2000, 0);
+    solver->Solve(*system.A, system.B, system.X);
+
+    // Recover the solution
+    system.bilinear->RecoverFEMSolution(system.X, *system.linear, voltage_);
+
+    if (!config_.fe.IsParallel())
+        logger->info("Electrostatic solve complete. V range: [{:.6e}, {:.6e}]", voltage_.Min(),
+                     voltage_.Max());
+}
+
+}  // namespace fem::physics

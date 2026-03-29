@@ -105,6 +105,27 @@ Expression &Expression::operator=(Expression &&other) noexcept
     return *this;
 }
 
+Expression::~Expression() = default;
+
+void Expression::InitializeParser()
+{
+    parser_ = std::make_unique<mu::Parser>();
+    parser_->DefineVar("x", &x_);
+    parser_->DefineVar("y", &y_);
+    parser_->DefineVar("z", &z_);
+    parser_->DefineVar("t", &t_);
+    parser_->DefineVar("T", &T_);
+
+    try
+    {
+        parser_->SetExpr(expression_);
+    }
+    catch (const mu::Parser::exception_type &e)
+    {
+        throw std::runtime_error("muparser expression parse failed: " + e.GetMsg());
+    }
+}
+
 double Expression::Evaluate(const EvalContext &ctx) const
 {
     if (is_constant_)

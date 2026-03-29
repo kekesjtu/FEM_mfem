@@ -1,5 +1,6 @@
 #include "fem/log/Logger.hpp"
 
+#include "mfem.hpp"
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/spdlog.h"
 
@@ -52,7 +53,17 @@ void Init(const std::string &level)
         logger = spdlog::stdout_color_mt("fem");
     }
 
-    logger->set_level(ParseLevel(level));
+    auto effective_level = ParseLevel(level);
+
+#ifdef MFEM_USE_MPI
+    // Suppress logging on non-root ranks in parallel runs
+    if (mfem::Mpi::IsInitialized() && mfem::Mpi::WorldRank() != 0)
+    {
+        effective_level = spdlog::level::off;
+    }
+#endif
+
+    logger->set_level(effective_level);
     logger->set_pattern("[%Y-%m-%d %H:%M:%S] [%^%l%$] %v");
     spdlog::set_default_logger(logger);
 }
