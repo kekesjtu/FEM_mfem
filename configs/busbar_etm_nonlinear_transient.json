@@ -5,6 +5,7 @@
     "order": 1,
     "uniform_refinement_levels": 0,
     "solver": "pcg",
+    "solver_mechanical": "mumps",
     "output_dir": "results/busbar_transient",
     "log_level": "info",
     "picard_max_iterations": 25,
@@ -15,7 +16,11 @@
     "transient_dt": 10,
     "transient_enabled": true,
     "transient_output_interval": 10.0,
-    "adaptive_dt": false
+    "adaptive_dt": true,
+    "adaptive_reltol": 1.0e-3,
+    "adaptive_abstol": 1.0e-6,
+    "dt_min": 1.0e-3,
+    "dt_max": 20.0
   },
   "materials": [
     {
@@ -61,12 +66,12 @@
           "bdr_attributes": [8, 15],
           "value": 0.0
         }
-      ],
-      "reference_temperature": 293.15
+      ]
     },
     {
       "type": "thermal",
       "source_default": "0.0",
+      "initial_temperature": 293.15,
       "robin_boundary_conditions": [
         {
           "bdr_attributes": [
@@ -86,8 +91,7 @@
           "bdr_attributes": [8, 15, 43],
           "value": [0.0, 0.0, 0.0]
         }
-      ],
-      "reference_temperature": 293.15
+      ]
     }
   ]
 }

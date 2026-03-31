@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace fem::post
+namespace fem::output
 {
 class SolutionTextExporter
 {

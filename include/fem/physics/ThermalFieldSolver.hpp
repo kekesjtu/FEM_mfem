@@ -28,15 +28,11 @@ class ThermalFieldSolver
     {
         return temperature_;
     }
-    const mfem::GridFunction &GetTemperature() const
-    {
-        return temperature_;
-    }
 
   private:
     frontend::ProjectConfig &config_;
     mfem::GridFunction temperature_;
-    mfem::GridFunction *voltage_gf_ = nullptr;
+    mfem::GridFunction *voltage_ = nullptr;
     mfem::Coefficient *sigma_ = nullptr;
     double transient_dt_ = 0.0;
     mfem::GridFunction *T_old_ = nullptr;

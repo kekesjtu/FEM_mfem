@@ -41,12 +41,12 @@
           "bdr_attributes": [8, 15],
           "value": 0.0
         }
-      ],
-      "reference_temperature": 273.15
+      ]
     },
     {
       "type": "thermal",
       "source_default": "0.0",
+      "initial_temperature": 293.15,
       "robin_boundary_conditions": [
         {
           "bdr_attributes": [

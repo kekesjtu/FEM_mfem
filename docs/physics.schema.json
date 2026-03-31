@@ -20,8 +20,24 @@
         "output_dir": { "type": "string", "default": "results" },
         "solver": {
           "type": "string",
-          "enum": ["pcg", "umfpack"],
-          "default": "pcg"
+          "enum": ["pcg", "umfpack", "mumps", "pardiso"],
+          "default": "pcg",
+          "description": "Default linear solver for all fields."
+        },
+        "solver_electrostatic": {
+          "type": "string",
+          "enum": ["pcg", "umfpack", "mumps", "pardiso"],
+          "description": "Override solver for the electrostatic field. If omitted, uses 'solver'."
+        },
+        "solver_thermal": {
+          "type": "string",
+          "enum": ["pcg", "umfpack", "mumps", "pardiso"],
+          "description": "Override solver for the thermal field. If omitted, uses 'solver'."
+        },
+        "solver_mechanical": {
+          "type": "string",
+          "enum": ["pcg", "umfpack", "mumps", "pardiso"],
+          "description": "Override solver for the mechanical field. If omitted, uses 'solver'."
         },
         "picard_max_iterations": {
           "type": "integer",
@@ -65,7 +81,31 @@
         "adaptive_dt": {
           "type": "boolean",
           "default": false,
-          "description": "Enable adaptive time stepping. When Picard iteration fails to converge, dt is halved and the step is retried. When convergence is fast, dt is increased."
+          "description": "Enable predictor-corrector adaptive time stepping with WRMS error control."
+        },
+        "adaptive_reltol": {
+          "type": "number",
+          "exclusiveMinimum": 0.0,
+          "default": 1e-3,
+          "description": "Relative tolerance for WRMS adaptive time step error norm."
+        },
+        "adaptive_abstol": {
+          "type": "number",
+          "exclusiveMinimum": 0.0,
+          "default": 1e-6,
+          "description": "Absolute tolerance for WRMS adaptive time step error norm."
+        },
+        "dt_min": {
+          "type": "number",
+          "exclusiveMinimum": 0.0,
+          "default": 1e-6,
+          "description": "Minimum allowed time step when adaptive_dt is enabled."
+        },
+        "dt_max": {
+          "type": "number",
+          "minimum": 0.0,
+          "default": 0.0,
+          "description": "Maximum allowed time step. 0 means use transient_output_interval."
         },
         "log_level": {
           "type": "string",
@@ -79,12 +119,10 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "properties"],
         "properties": {
           "name": { "type": "string" },
           "properties": {
             "type": "object",
-            "additionalProperties": { "type": "string" },
             "description": "Property expression strings, e.g. diffusion='1.0', k='10+0.1*x'."
           }
         },
@@ -217,10 +255,15 @@
               "additionalProperties": false
             }
           },
+          "initial_temperature": {
+            "type": "number",
+            "default": 293.15,
+            "description": "Initial temperature for transient thermal fields, and for steady-state thermal fields if no other initial condition is specified."
+          },
           "reference_temperature": {
             "type": "number",
             "default": 293.15,
-            "description": "Reference temperature (K). For mechanical fields: used as stress-free temperature in thermal expansion. For electrostatic fields: used as the initial/fallback temperature when evaluating temperature-dependent conductivity expressions (e.g. before coupling or in single-field mode). Default is 293.15 K (20 °C)."
+            "description": "Reference temperature for thermal expansion for mechanical fields and sigma for electrostatic fields. Only used if thermal fields are not enabled."
           }
         },
         "additionalProperties": false

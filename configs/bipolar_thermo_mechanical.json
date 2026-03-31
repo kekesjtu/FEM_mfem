@@ -36,6 +36,7 @@
     {
       "type": "thermal",
       "source_default": "0.0",
+      "initial_temperature": 273.15,
       "source_by_domain": {
         "3": "1.1086e7"
       },
@@ -72,8 +73,7 @@
           "bdr_attributes": [4],
           "value": 8000000.0
         }
-      ],
-      "reference_temperature": 273.15
+      ]
     }
   ]
 }

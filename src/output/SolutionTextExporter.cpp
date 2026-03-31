@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace fem::post
+namespace fem::output
 {
 namespace
 {

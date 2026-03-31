@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.16)
 project(FEM_mfem 
     VERSION 1.0.0
     DESCRIPTION "Finite Element Method Solver based on MFEM"
-    LANGUAGES CXX
+    LANGUAGES CXX C Fortran
 )
 
 # 生成 compile_commands.json 用于 IntelliSense
@@ -21,11 +21,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if(MSVC)
     add_compile_options(/W4)
 else()
-    add_compile_options(-Wall -Wextra -Wpedantic -fdiagnostics-color=auto)
+    add_compile_options(-Wall -fdiagnostics-color=auto)
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         add_compile_options(-g)
     elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-        add_compile_options(-Ofast)
+        add_compile_options(-O3)
     endif()
 endif()
 
@@ -88,12 +88,47 @@ option(FEM_USE_SYSTEM_MFEM "Use externally installed MFEM package" OFF)
 set(MFEM_USE_MPI ON CACHE BOOL "Enable MPI support in MFEM" FORCE)
 if (MFEM_USE_MPI)
     message(STATUS "Configuring MFEM with MPI support")
-    find_package(MPI REQUIRED)
+    find_package(MPI REQUIRED COMPONENTS C CXX Fortran)
     set(MFEM_USE_METIS_5 ON)
     set(MFEM_USE_HYPRE ON)
     set(MFEM_USE_SUITESPARSE ON)
     set(HYPRE_INCLUDE_DIRS /usr/include/hypre)
     set(HYPRE_LIBRARIES /usr/lib/x86_64-linux-gnu/libHYPRE.so)
+
+    # MUMPS parallel direct solver
+    set(MFEM_USE_MUMPS ON CACHE BOOL "Enable MUMPS direct solver" FORCE)
+    set(MUMPS_INCLUDE_DIRS "/usr/include" CACHE STRING "MUMPS include path" FORCE)
+    set(MUMPS_LIBRARIES
+        "/usr/lib/x86_64-linux-gnu/libdmumps.so"
+        "/usr/lib/x86_64-linux-gnu/libmumps_common.so"
+        "/usr/lib/x86_64-linux-gnu/libpord.so"
+        CACHE STRING "MUMPS libraries" FORCE)
+    set(MUMPS_REQUIRED_PACKAGES "MPI" "MPI_Fortran" "METIS"
+        "ScaLAPACK" "LAPACK" "BLAS"
+        CACHE STRING "MUMPS required packages" FORCE)
+    set(ScaLAPACK_LIBRARIES "/usr/lib/x86_64-linux-gnu/libscalapack-openmpi.so"
+        CACHE STRING "ScaLAPACK library" FORCE)
+
+    # MKL PARDISO direct solver (serial, operates on SparseMatrix)
+    set(MFEM_USE_MKL_PARDISO ON CACHE BOOL "Enable MKL PARDISO direct solver" FORCE)
+    set(MKL_PARDISO_INCLUDE_DIRS "/usr/include/mkl" CACHE STRING "MKL include path" FORCE)
+    set(MKL_PARDISO_LIBRARIES
+        "/usr/lib/x86_64-linux-gnu/libmkl_intel_lp64.so"
+        "/usr/lib/x86_64-linux-gnu/libmkl_sequential.so"
+        "/usr/lib/x86_64-linux-gnu/libmkl_core.so"
+        CACHE STRING "MKL PARDISO libraries" FORCE)
+    set(MKL_LIBRARY_DIR "lib/x86_64-linux-gnu" CACHE STRING "MKL library subdir" FORCE)
+
+    # MKL Cluster PARDISO (parallel, operates on HypreParMatrix)
+    set(MFEM_USE_MKL_CPARDISO ON CACHE BOOL "Enable MKL Cluster PARDISO" FORCE)
+    set(MKL_CPARDISO_INCLUDE_DIRS "/usr/include/mkl" CACHE STRING "MKL include path" FORCE)
+    set(MKL_CPARDISO_LIBRARIES
+        "/usr/lib/x86_64-linux-gnu/libmkl_intel_lp64.so"
+        "/usr/lib/x86_64-linux-gnu/libmkl_sequential.so"
+        "/usr/lib/x86_64-linux-gnu/libmkl_core.so"
+        "/usr/lib/x86_64-linux-gnu/libmkl_blacs_openmpi_lp64.so"
+        CACHE STRING "MKL CPARDISO libraries" FORCE)
+    set(MKL_MPI_WRAPPER_LIB "mkl_blacs_openmpi_lp64" CACHE STRING "MKL MPI wrapper" FORCE)
 endif()
 
 if(FEM_USE_SYSTEM_MFEM)

@@ -107,7 +107,8 @@ void MechanicalFieldSolver::Solve()
     auto system = assembly::MfemLinearElasticityAssembler::Assemble(input, displacement_);
 
     // Solve
-    auto solver = solver::CreateLinearSolver(config_.simulation.solver, 1e-12, 1e-12, 5000, 0);
+    auto solver = solver::CreateLinearSolver(config_.simulation.GetSolver("mechanical"), 1e-12,
+                                             1e-12, 5000, 0);
     solver->Solve(*system.A, system.B, system.X);
 
     // Recover the solution

@@ -67,6 +67,9 @@ void ConfigLoader::LoadSimulation(const json &root)
     s.output_dir = ReadOrDefault<std::string>(sim, "output_dir", "results");
     s.log_level = ReadOrDefault<std::string>(sim, "log_level", "info");
     s.solver = ReadOrDefault<std::string>(sim, "solver", "pcg");
+    s.solver_electrostatic = ReadOrDefault<std::string>(sim, "solver_electrostatic", "");
+    s.solver_thermal = ReadOrDefault<std::string>(sim, "solver_thermal", "");
+    s.solver_mechanical = ReadOrDefault<std::string>(sim, "solver_mechanical", "");
     s.picard_max_iterations = ReadOrDefault(sim, "picard_max_iterations", 30);
     s.picard_tolerance = ReadOrDefault(sim, "picard_tolerance", 1.0e-6);
     s.picard_relaxation = ReadOrDefault(sim, "picard_relaxation", 1.0);
@@ -76,6 +79,10 @@ void ConfigLoader::LoadSimulation(const json &root)
     s.transient_dt = ReadOrDefault(sim, "transient_dt", 1.0);
     s.transient_output_interval = ReadOrDefault(sim, "transient_output_interval", 10.0);
     s.adaptive_dt = ReadOrDefault(sim, "adaptive_dt", false);
+    s.adaptive_reltol = ReadOrDefault(sim, "adaptive_reltol", 1.0e-3);
+    s.adaptive_abstol = ReadOrDefault(sim, "adaptive_abstol", 1.0e-6);
+    s.dt_min = ReadOrDefault(sim, "dt_min", 1.0e-6);
+    s.dt_max = ReadOrDefault(sim, "dt_max", 0.0);
 }
 
 void ConfigLoader::LoadMaterials(const json &root)
@@ -165,6 +172,14 @@ void ConfigLoader::LoadFields(const json &root)
             throw std::runtime_error("Unknown field type: " + type);
         }
     }
+
+    // Propagate thermal initial_temperature → electric/mechanical reference_temperature
+    if (config_.thermal_field.enabled)
+    {
+        const double T_init = config_.thermal_field.initial_temperature;
+        config_.electric_field.reference_temperature = T_init;
+        config_.mechanical_field.reference_temperature = T_init;
+    }
 }
 
 ScalarFieldConfig ConfigLoader::LoadScalarField(const json &field_node)
@@ -206,6 +221,7 @@ ScalarFieldConfig ConfigLoader::LoadScalarField(const json &field_node)
     }
 
     cfg.reference_temperature = ReadOrDefault(field_node, "reference_temperature", 293.15);
+    cfg.initial_temperature = ReadOrDefault(field_node, "initial_temperature", 293.15);
 
     return cfg;
 }
@@ -288,11 +304,10 @@ void ConfigLoader::BuildFE()
     bool parallel = false;
 #ifdef MFEM_USE_MPI
     parallel = mfem::Mpi::IsInitialized() && mfem::Mpi::WorldSize() > 1;
-#endif
 
-#ifdef MFEM_USE_MPI
     if (parallel)
     {
+        logger->info("Execution mode: parallel (MPI ranks={})", mfem::Mpi::WorldSize());
         config_.fe.pmesh = std::make_unique<mfem::ParMesh>(MPI_COMM_WORLD, *config_.fe.mesh);
         logger->info("ParMesh created: local elements={}", config_.fe.pmesh->GetNE());
 
@@ -316,6 +331,17 @@ void ConfigLoader::BuildFE()
         return;
     }
 #endif
+
+#ifdef MFEM_USE_MPI
+    if (mfem::Mpi::IsInitialized())
+    {
+        logger->info("Execution mode: serial (MPI ranks={})", mfem::Mpi::WorldSize());
+    }
+    else
+#endif
+    {
+        logger->info("Execution mode: serial");
+    }
 
     // Serial path
     if (config_.HasElectricField() || config_.HasThermalField())

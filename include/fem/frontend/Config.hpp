@@ -18,6 +18,9 @@ struct SimulationConfig
     std::string output_dir = "results";
     std::string log_level = "info";
     std::string solver = "pcg";
+    std::string solver_electrostatic;  // per-field override, empty → use solver
+    std::string solver_thermal;        // per-field override, empty → use solver
+    std::string solver_mechanical;     // per-field override, empty → use solver
     int picard_max_iterations = 30;
     double picard_tolerance = 1.0e-6;
     double picard_relaxation = 1.0;
@@ -27,6 +30,22 @@ struct SimulationConfig
     double transient_dt = 1.0;
     double transient_output_interval = 10.0;
     bool adaptive_dt = false;
+    double adaptive_reltol = 1.0e-3;
+    double adaptive_abstol = 1.0e-6;
+    double dt_min = 1.0e-6;
+    double dt_max = 0.0;  // 0 = use transient_output_interval
+
+    /// Return the effective solver name for a given field type.
+    const std::string &GetSolver(const std::string &field_type) const
+    {
+        if (field_type == "electrostatic" && !solver_electrostatic.empty())
+            return solver_electrostatic;
+        if (field_type == "thermal" && !solver_thermal.empty())
+            return solver_thermal;
+        if (field_type == "mechanical" && !solver_mechanical.empty())
+            return solver_mechanical;
+        return solver;
+    }
 };
 
 // 材料数据结构
@@ -65,6 +84,8 @@ struct ScalarFieldConfig
     /// For electrostatic fields: temperature used when evaluating T-dependent conductivity
     /// expressions in single-field mode or as the starting temperature before Picard coupling.
     double reference_temperature = 293.15;
+    /// For thermal fields: initial temperature (doubles as reference for electrostatic/mechanical).
+    double initial_temperature = 293.15;
 };
 
 struct MechanicalFieldConfig

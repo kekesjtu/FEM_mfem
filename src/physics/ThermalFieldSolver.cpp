@@ -11,12 +11,12 @@ namespace fem::physics
 ThermalFieldSolver::ThermalFieldSolver(frontend::ProjectConfig &config)
     : config_(config), temperature_(&config.fe.GetScalarFESpace())
 {
-    temperature_ = 293.15;  // initial room temperature
+    temperature_ = config_.thermal_field.initial_temperature;
 }
 
 void ThermalFieldSolver::SetVoltageField(mfem::GridFunction *voltage_gf)
 {
-    voltage_gf_ = voltage_gf;
+    voltage_ = voltage_gf;
 }
 
 void ThermalFieldSolver::SetElectricalConductivity(mfem::Coefficient *sigma)
@@ -44,10 +44,10 @@ void ThermalFieldSolver::Solve()
     // Build source coefficient
     std::unique_ptr<mfem::Coefficient> source_ptr;
 
-    if (voltage_gf_ && sigma_)
+    if (voltage_ && sigma_)
     {
         // Joule heating: Q = sigma * |grad(V)|^2
-        source_ptr = std::make_unique<coeff::JouleHeatingCoefficient>(*sigma_, *voltage_gf_);
+        source_ptr = std::make_unique<coeff::JouleHeatingCoefficient>(*sigma_, *voltage_);
         logger->debug("Joule heating source enabled");
     }
     else
@@ -98,14 +98,21 @@ void ThermalFieldSolver::Solve()
 
     // Assemble — boundary marker construction handled by assembler
     assembly::PoissonAssemblyInput input{
-        config_.fe.GetScalarFESpace(), k_coeff, *source_ptr, field_config.dirichlet_bcs,
-        field_config.robin_bcs,        293.15,  mass_lhs,    mass_rhs,
+        config_.fe.GetScalarFESpace(),
+        k_coeff,
+        *source_ptr,
+        field_config.dirichlet_bcs,
+        field_config.robin_bcs,
+        config_.thermal_field.initial_temperature,
+        mass_lhs,
+        mass_rhs,
     };
 
     auto system = assembly::MfemPoissonAssembler::Assemble(input, temperature_);
 
     // Solve
-    auto solver = solver::CreateLinearSolver(config_.simulation.solver, 1e-12, 1e-12, 2000, 0);
+    auto solver =
+        solver::CreateLinearSolver(config_.simulation.GetSolver("thermal"), 1e-12, 1e-12, 2000, 0);
     solver->Solve(*system.A, system.B, system.X);
 
     // Recover the solution
