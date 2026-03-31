@@ -1,5 +1,6 @@
 #include "fem/frontend/ConfigLoader.hpp"
 
+#include "fem/frontend/Expression.hpp"
 #include "fem/log/Logger.hpp"
 
 #include <filesystem>
@@ -203,7 +204,18 @@ ScalarFieldConfig ConfigLoader::LoadScalarField(const json &field_node)
         {
             ScalarFieldConfig::DirichletBC dbc;
             dbc.bdr_attributes = bc.at("bdr_attributes").get<std::vector<int>>();
-            dbc.value = bc.at("value").get<double>();
+            const auto &val = bc.at("value");
+            if (val.is_string())
+            {
+                dbc.value_expr = val.get<std::string>();
+                // Evaluate at t=0 for initial value
+                frontend::Expression expr(dbc.value_expr);
+                dbc.value = expr.Evaluate({0, 0, 0, 0, 0});
+            }
+            else
+            {
+                dbc.value = val.get<double>();
+            }
             cfg.dirichlet_bcs.push_back(std::move(dbc));
         }
     }

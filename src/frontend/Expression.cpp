@@ -2,6 +2,7 @@
 
 #include "muParser.h"
 
+#include <cmath>
 #include <stdexcept>
 #include <utility>
 
@@ -115,6 +116,7 @@ void Expression::InitializeParser()
     parser_->DefineVar("z", &z_);
     parser_->DefineVar("t", &t_);
     parser_->DefineVar("T", &T_);
+    parser_->DefineConst("pi", M_PI);
 
     try
     {

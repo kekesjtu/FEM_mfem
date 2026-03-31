@@ -12,6 +12,19 @@ ElectrostaticFieldSolver::ElectrostaticFieldSolver(frontend::ProjectConfig &conf
     : config_(config), voltage_(&config.fe.GetScalarFESpace())
 {
     voltage_ = 0.0;
+
+    // Pre-parse time-varying BC expressions
+    for (const auto &dbc : config_.electric_field.dirichlet_bcs)
+    {
+        if (!dbc.value_expr.empty())
+        {
+            bc_expressions_.emplace_back(dbc.value_expr);
+        }
+        else
+        {
+            bc_expressions_.emplace_back(std::to_string(dbc.value));
+        }
+    }
 }
 
 void ElectrostaticFieldSolver::SetTemperatureField(mfem::GridFunction *temperature_gf)
@@ -22,6 +35,18 @@ void ElectrostaticFieldSolver::SetTemperatureField(mfem::GridFunction *temperatu
 void ElectrostaticFieldSolver::SetElectricalConductivity(mfem::Coefficient *sigma)
 {
     sigma_ = sigma;
+}
+
+void ElectrostaticFieldSolver::UpdateBoundaryConditions(double t)
+{
+    auto &bcs = config_.electric_field.dirichlet_bcs;
+    for (size_t i = 0; i < bcs.size(); ++i)
+    {
+        if (!bcs[i].value_expr.empty())
+        {
+            bcs[i].value = bc_expressions_[i].Evaluate({0, 0, 0, t, 0});
+        }
+    }
 }
 
 void ElectrostaticFieldSolver::Solve()

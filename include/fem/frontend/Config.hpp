@@ -67,6 +67,9 @@ struct ScalarFieldConfig
     {
         std::vector<int> bdr_attributes;
         double value = 0.0;
+        /// Optional muparser expression for time-varying BCs (e.g. "0.02*sin(100*pi*t)").
+        /// If non-empty, value is re-evaluated at each transient time step.
+        std::string value_expr;
     };
 
     struct RobinBC

@@ -165,7 +165,15 @@
                   "type": "array",
                   "items": { "type": "integer", "minimum": 1 }
                 },
-                "value": { "type": "number" }
+                "value": {
+                  "oneOf": [
+                    { "type": "number" },
+                    {
+                      "type": "string",
+                      "description": "muparser expression with variable t for time-varying boundary conditions, e.g. '0.02*sin(100*pi*t)'"
+                    }
+                  ]
+                }
               },
               "additionalProperties": false
             }

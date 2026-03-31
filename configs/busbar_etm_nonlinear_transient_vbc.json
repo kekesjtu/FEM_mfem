@@ -6,21 +6,21 @@
     "uniform_refinement_levels": 0,
     "solver": "pcg",
     "solver_mechanical": "mumps",
-    "output_dir": "results/busbar_transient",
+    "output_dir": "results/busbar_transient_vbc",
     "log_level": "info",
     "picard_max_iterations": 25,
-    "picard_tolerance": 1.0e-6,
+    "picard_tolerance": 1.0e-9,
     "picard_relaxation": 1.0,
     "transient_t_start": 0,
-    "transient_t_end": 0.1,
+    "transient_t_end": 0.01,
     "transient_dt": 0.001,
     "transient_enabled": true,
-    "transient_output_interval": 10.0,
+    "transient_output_interval": 0.001,
     "adaptive_dt": true,
-    "adaptive_reltol": 1.0e-3,
-    "adaptive_abstol": 1.0e-6,
+    "adaptive_reltol": 1.0e-6,
+    "adaptive_abstol": 1.0e-10,
     "dt_min": 1.0e-6,
-    "dt_max": 0.05
+    "dt_max": 0.005
   },
   "materials": [
     {
@@ -60,7 +60,7 @@
       "dirichlet_boundary_conditions": [
         {
           "bdr_attributes": [43],
-          "value": "0.02*sin(100*pi*t)"
+          "value": "0.2*sin(100*pi*t)"
         },
         {
           "bdr_attributes": [8, 15],

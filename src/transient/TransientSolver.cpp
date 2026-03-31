@@ -97,7 +97,10 @@ void TransientSolver::Run()
 
     // --- Initial state at t=0 ---
     if (e_solver)
+    {
+        e_solver->UpdateBoundaryConditions(sim.transient_t_start);
         e_solver->Solve();
+    }
     if (m_solver)
     {
         if (t_solver)
@@ -163,6 +166,10 @@ void TransientSolver::Run()
         // --- Step 2: Correction (Picard iteration) ---
         int picard_iters = 0;
         bool picard_converged = false;
+
+        // Update time-varying Dirichlet BCs for the target time
+        if (e_solver)
+            e_solver->UpdateBoundaryConditions(t + dt);
 
         if (has_e && has_t)
         {
