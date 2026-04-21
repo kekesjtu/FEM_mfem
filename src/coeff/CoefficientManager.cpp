@@ -8,11 +8,6 @@
 namespace fem::coeff
 {
 
-int GetMaxAttribute(mfem::Mesh &mesh)
-{
-    return mesh.attributes.Max();
-}
-
 bool IsPropertyConstant(const std::string &property_name, const frontend::MaterialDatabase &db)
 {
     for (const auto &[mat_name, props] : db.material_to_properties)
@@ -44,10 +39,10 @@ bool IsPropertyConstant(const std::string &property_name, const frontend::Materi
 
 ExpressionCoefficient::ExpressionCoefficient(const std::string &property_name,
                                              const frontend::MaterialDatabase &db, mfem::Mesh &mesh,
-                                             mfem::GridFunction *temperature_gf)
+                                             mfem::GridFunction *const *temperature_gf)
     : temperature_gf_(temperature_gf), mesh_(mesh)
 {
-    const int max_attr = GetMaxAttribute(mesh);
+    const int max_attr = mesh.attributes.Max();
     // Default expression: "0.0" for unassigned domains
     attr_to_expr_.resize(max_attr + 1, DomainExpression{frontend::Expression("0.0"), true, 0.0});
 
@@ -124,9 +119,9 @@ double ExpressionCoefficient::Eval(mfem::ElementTransformation &T, const mfem::I
     ctx.y = phys_point_buf_.Size() > 1 ? phys_point_buf_(1) : 0.0;
     ctx.z = phys_point_buf_.Size() > 2 ? phys_point_buf_(2) : 0.0;
 
-    if (temperature_gf_)
+    if (temperature_gf_ && *temperature_gf_)
     {
-        ctx.T = temperature_gf_->GetValue(T, ip);
+        ctx.T = (*temperature_gf_)->GetValue(T, ip);
     }
     else
     {
@@ -142,7 +137,7 @@ PiecewiseConstantCoefficient::PiecewiseConstantCoefficient(const std::string &pr
                                                            const frontend::MaterialDatabase &db,
                                                            mfem::Mesh &mesh)
 {
-    const int max_attr = GetMaxAttribute(mesh);
+    const int max_attr = mesh.attributes.Max();
     attr_to_value_.resize(max_attr + 1, 0.0);
 
     std::unordered_map<int, std::string> attr_to_mat;
@@ -182,9 +177,13 @@ PiecewiseConstantCoefficient::PiecewiseConstantCoefficient(const std::string &pr
         }
         catch (const std::exception &e)
         {
-            throw std::runtime_error("PiecewiseConstantCoefficient: property '" + property_name +
-                                     "' for material '" + mat_name +
-                                     "' is not a constant: " + expr_it->second);
+            std::string message = "PiecewiseConstantCoefficient: property '";
+            message += property_name;
+            message += "' for material '";
+            message += mat_name;
+            message += "' is not a constant: ";
+            message += expr_it->second;
+            throw std::runtime_error(message);
         }
 
         logger->debug("Material '{}' attr={}: {}={}", mat_name, attr, property_name,
@@ -205,8 +204,8 @@ double PiecewiseConstantCoefficient::Eval(mfem::ElementTransformation &T,
 
 // --- JouleHeatingCoefficient ---
 
-JouleHeatingCoefficient::JouleHeatingCoefficient(mfem::Coefficient &sigma,
-                                                 mfem::GridFunction &voltage)
+JouleHeatingCoefficient::JouleHeatingCoefficient(mfem::Coefficient *const *sigma,
+                                                 mfem::GridFunction *const *voltage)
     : sigma_(sigma), voltage_(voltage)
 {
 }
@@ -214,12 +213,18 @@ JouleHeatingCoefficient::JouleHeatingCoefficient(mfem::Coefficient &sigma,
 double JouleHeatingCoefficient::Eval(mfem::ElementTransformation &T,
                                      const mfem::IntegrationPoint &ip)
 {
+    if (!sigma_ || !*sigma_ || !voltage_ || !*voltage_)
+    {
+        throw std::runtime_error(
+            "JouleHeatingCoefficient requires both conductivity and voltage fields before Eval");
+    }
+
     // Q = sigma * |grad(V)|^2
-    const double sigma_val = sigma_.Eval(T, ip);
+    const double sigma_val = (*sigma_)->Eval(T, ip);
 
     const int dim = T.GetSpaceDim();
     grad_v_buf_.SetSize(dim);
-    voltage_.GetGradient(T, grad_v_buf_);
+    (*voltage_)->GetGradient(T, grad_v_buf_);
 
     double grad_sq = 0.0;
     for (int d = 0; d < dim; ++d)
@@ -228,6 +233,20 @@ double JouleHeatingCoefficient::Eval(mfem::ElementTransformation &T,
     }
 
     return sigma_val * grad_sq;
+}
+
+double CombinedHeatSourceCoefficient::Eval(mfem::ElementTransformation &T,
+                                           const mfem::IntegrationPoint &ip)
+{
+    double value = 0.0;
+
+    if (base_source_)
+        value += base_source_->Eval(T, ip);
+
+    if (joule_source_)
+        value += joule_source_->Eval(T, ip);
+
+    return value;
 }
 
 }  // namespace fem::coeff

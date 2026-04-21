@@ -1,19 +1,30 @@
-#include "fem/assembly/ElectrostaticAssembler.hpp"
+#include "fem/assembler/ElectrostaticAssembler.hpp"
 
+#include "fem/coeff/ElectrostaticCoeffs.hpp"
 #include "fem/integrator/PoissonIntegrators.hpp"
 
-namespace fem::assembly
+#include <stdexcept>
+
+namespace fem::assembler
 {
 
 AssembledSystem ElectrostaticAssembler::Assemble(mfem::ParFiniteElementSpace &space,
-                                                 mfem::Coefficient &sigma,
-                                                 mfem::Coefficient &source, ElectrostaticBCData &bc,
+                                                 coeff::ElectrostaticCoeffs &coeffs,
+                                                 BCbuilder::ScalarBCData &bc,
                                                  mfem::GridFunction &voltage)
 {
+    auto *sigma = coeffs.GetSigma();
+    if (!sigma)
+    {
+        throw std::runtime_error(
+            "ElectrostaticAssembler::Assemble requires an electrical conductivity coefficient");
+    }
+
     AssembledSystem system;
 
     system.linear = std::make_unique<mfem::ParLinearForm>(&space);
-    system.linear->AddDomainIntegrator(new integrator::CustomDomainLFIntegrator(source));
+    system.linear->AddDomainIntegrator(
+        new integrator::CustomDomainLFIntegrator(coeffs.GetSource()));
     for (size_t i = 0; i < bc.robin_markers.size(); ++i)
     {
         system.linear->AddBoundaryIntegrator(
@@ -22,7 +33,7 @@ AssembledSystem ElectrostaticAssembler::Assemble(mfem::ParFiniteElementSpace &sp
     system.linear->Assemble();
 
     system.bilinear = std::make_unique<mfem::ParBilinearForm>(&space);
-    system.bilinear->AddDomainIntegrator(new integrator::CustomDiffusionIntegrator(sigma));
+    system.bilinear->AddDomainIntegrator(new integrator::CustomDiffusionIntegrator(*sigma));
     for (size_t i = 0; i < bc.robin_markers.size(); ++i)
     {
         system.bilinear->AddBoundaryIntegrator(
@@ -44,4 +55,4 @@ AssembledSystem ElectrostaticAssembler::Assemble(mfem::ParFiniteElementSpace &sp
     return system;
 }
 
-}  // namespace fem::assembly
+}  // namespace fem::assembler

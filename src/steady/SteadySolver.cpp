@@ -1,6 +1,5 @@
 #include "fem/steady/SteadySolver.hpp"
 
-#include "fem/coeff/CoefficientManager.hpp"
 #include "fem/coupling/PicardCoupler.hpp"
 #include "fem/log/Logger.hpp"
 #include "fem/output/ResultExporter.hpp"
@@ -16,7 +15,6 @@ namespace fem::steady
 SteadySolver::SteadySolver(frontend::ProjectConfig& config) : config_(config)
 {
 }
-
 
 void SteadySolver::SolveSteady()
 {
@@ -38,12 +36,9 @@ void SteadySolver::SolveSteady()
         e_solver = std::make_unique<physics::ElectrostaticFieldSolver>(config_);
         t_solver = std::make_unique<physics::ThermalFieldSolver>(config_);
 
-        coeff::ExpressionCoefficient sigma_coeff("electrical_conductivity", config_.materials,
-                                                 config_.fe.GetMesh(), &t_solver->GetTemperature());
         e_solver->SetTemperatureField(&t_solver->GetTemperature());
-        e_solver->SetElectricalConductivity(&sigma_coeff);
         t_solver->SetVoltageField(&e_solver->GetVoltage());
-        t_solver->SetElectricalConductivity(&sigma_coeff);
+        t_solver->SetElectricalConductivity(e_solver->GetSigma());
         t_solver->CacheMatrices();
 
         coupling::PicardCoupler coupler(config_.simulation);
@@ -62,14 +57,11 @@ void SteadySolver::SolveSteady()
         e_solver = std::make_unique<physics::ElectrostaticFieldSolver>(config_);
         t_solver = std::make_unique<physics::ThermalFieldSolver>(config_);
 
-        coeff::ExpressionCoefficient sigma_coeff("electrical_conductivity", config_.materials,
-                                                 config_.fe.GetMesh(), nullptr);
         e_solver->SetTemperatureField(&t_solver->GetTemperature());
-        e_solver->SetElectricalConductivity(&sigma_coeff);
         e_solver->Solve();
 
         t_solver->SetVoltageField(&e_solver->GetVoltage());
-        t_solver->SetElectricalConductivity(&sigma_coeff);
+        t_solver->SetElectricalConductivity(e_solver->GetSigma());
         t_solver->CacheMatrices();
         t_solver->SolveSteady();
     }

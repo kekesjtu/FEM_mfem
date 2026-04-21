@@ -25,13 +25,13 @@ PicardResult PicardCoupler::RunPicard(physics::ElectrostaticFieldSolver *e_solve
 
         // Lazy-init working vectors on first call (or if DOF count changes)
         const int sz = t_solver->GetTemperature().ParFESpace()->GetTrueVSize();
-        if (T_prev_.Size() != sz)
+        if (T_prev_true_.Size() != sz)
         {
-            T_prev_.SetSize(sz);
+            T_prev_true_.SetSize(sz);
             delta_.SetSize(sz);
         }
 
-        t_solver->GetTemperature().GetTrueDofs(T_prev_);
+        t_solver->GetTemperature().GetTrueDofs(T_prev_true_);
 
         for (int iter = 0; iter < max_iterations_; ++iter)
         {
@@ -43,10 +43,10 @@ PicardResult PicardCoupler::RunPicard(physics::ElectrostaticFieldSolver *e_solve
 
             // Convergence check (true-dof space)
             t_solver->GetTemperature().GetTrueDofs(delta_);
-            delta_ -= T_prev_;
+            delta_ -= T_prev_true_;
             MPI_Comm comm = t_solver->GetTemperature().ParFESpace()->GetComm();
             double diff_sq = mfem::InnerProduct(comm, delta_, delta_);
-            double ref_sq = mfem::InnerProduct(comm, T_prev_, T_prev_);
+            double ref_sq = mfem::InnerProduct(comm, T_prev_true_, T_prev_true_);
             double rel_change =
                 (ref_sq > 0.0) ? std::sqrt(diff_sq) / std::sqrt(ref_sq) : std::sqrt(diff_sq);
 
@@ -59,14 +59,14 @@ PicardResult PicardCoupler::RunPicard(physics::ElectrostaticFieldSolver *e_solve
             // Relaxation
             if (std::abs(relaxation_ - 1.0) > 1e-14)
             {
-                mfem::Vector T_cur_true(T_prev_.Size());
+                mfem::Vector T_cur_true(T_prev_true_.Size());
                 t_solver->GetTemperature().GetTrueDofs(T_cur_true);
                 T_cur_true *= relaxation_;
-                T_cur_true.Add(1.0 - relaxation_, T_prev_);
+                T_cur_true.Add(1.0 - relaxation_, T_prev_true_);
                 t_solver->GetTemperature().Distribute(T_cur_true);
             }
 
-            t_solver->GetTemperature().GetTrueDofs(T_prev_);
+            t_solver->GetTemperature().GetTrueDofs(T_prev_true_);
         }
         return {max_iterations_, false};
     }

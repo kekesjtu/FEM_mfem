@@ -1,6 +1,5 @@
 #include "fem/transient/TransientSolver.hpp"
 
-#include "fem/coeff/CoefficientManager.hpp"
 #include "fem/coupling/PicardCoupler.hpp"
 #include "fem/log/Logger.hpp"
 #include "fem/output/ResultExporter.hpp"
@@ -55,22 +54,16 @@ void TransientSolver::SolveTransient()
     if (has_m)
         m_solver = std::make_unique<physics::MechanicalFieldSolver>(config_);
 
-    // --- Coupling coefficients ---
-    std::unique_ptr<coeff::ExpressionCoefficient> sigma_coeff;
     if (has_e && has_t)
     {
-        sigma_coeff = std::make_unique<coeff::ExpressionCoefficient>(
-            "electrical_conductivity", config_.materials, config_.fe.GetMesh(),
-            &t_solver->GetTemperature());
         e_solver->SetTemperatureField(&t_solver->GetTemperature());
-        e_solver->SetElectricalConductivity(sigma_coeff.get());
         t_solver->SetVoltageField(&e_solver->GetVoltage());
-        t_solver->SetElectricalConductivity(sigma_coeff.get());
+        t_solver->SetElectricalConductivity(e_solver->GetSigma());
     }
 
-    // T_old for backward Euler
-    mfem::ParGridFunction T_old(&config_.fe.GetScalarFESpace());
-    T_old = T_init;
+    // T_n: T^n passed to EnableTransient each step
+    mfem::ParGridFunction T_n(&config_.fe.GetScalarFESpace());
+    T_n = T_init;
 
     // History for predictor-corrector error estimation and adaptive BDF order
     const int N_true = config_.fe.GetScalarFESpace().GetTrueVSize();
@@ -145,9 +138,9 @@ void TransientSolver::SolveTransient()
         dt = std::clamp(dt, dt_min, dt_max);
 
         if (has_t)
-            T_old = t_solver->GetTemperature();
+            T_n = t_solver->GetTemperature();
         if (has_t)
-            t_solver->EnableTransient(dt, &T_old);
+            t_solver->EnableTransient(dt, &T_n);
         if (e_solver)
             e_solver->UpdateBoundaryConditions(t + dt);
 
@@ -164,7 +157,7 @@ void TransientSolver::SolveTransient()
             else
             {
                 if (has_t)
-                    t_solver->GetTemperature() = T_old;
+                    t_solver->GetTemperature() = T_n;
                 dt *= 0.5;
                 rejected_steps++;
                 logger->warn("Step rejected: Picard not converged, dt->{:.4e}", dt);
@@ -189,19 +182,19 @@ void TransientSolver::SolveTransient()
             else
             {
                 T_n_true.SetSize(N_true);
-                T_old.GetTrueDofs(T_n_true);
-                mfem::Vector T_be_true(N_true);
-                t_solver->GetTemperature().GetTrueDofs(T_be_true);
+                T_n.GetTrueDofs(T_n_true);
+                mfem::Vector T_np1_bdf1_true(N_true);
+                t_solver->GetBDF1Solution().GetTrueDofs(T_np1_bdf1_true);
 
                 // --- Order 1: linear predictor + BE corrector ---
-                mfem::Vector T_pred1(N_true);
+                mfem::Vector T_np1_pred1_true(N_true);
                 {
                     double r = dt / dt_prev;
-                    add(1.0 + r, T_n_true, -r, T_nm1_true, T_pred1);
+                    add(1.0 + r, T_n_true, -r, T_nm1_true, T_np1_pred1_true);
                 }
-                auto err1 = ComputeAdaptiveError(T_pred1, T_be_true, dt, sim.adaptive_reltol,
-                                                 sim.adaptive_abstol, sim.eta_safety, sim.eta_max,
-                                                 sim.eta_min, dt_min, 1);
+                auto err1 = ComputeAdaptiveError(
+                    T_np1_pred1_true, T_np1_bdf1_true, dt, sim.adaptive_reltol, sim.adaptive_abstol,
+                    sim.eta_safety, sim.eta_max, sim.eta_min, dt_min, 1);
                 double wrms_1 = err1.wrms;
                 double dt_new_1 = err1.dt_new;
 
@@ -212,20 +205,22 @@ void TransientSolver::SolveTransient()
                 {
                     t_solver->SolveBDF2(T_nm1_true, dt_prev);
 
-                    mfem::Vector T_pred2_true(N_true);
+                    mfem::Vector T_np1_pred2_true(N_true);
                     {
                         double h1 = dt_prev, h2 = dt_prev2;
                         double L0 = dt * (dt + h1) / (h2 * (h1 + h2));
                         double L1 = -dt * (dt + h1 + h2) / (h1 * h2);
                         double L2 = (dt + h1) * (dt + h1 + h2) / (h1 * (h1 + h2));
-                        add(L0, T_nm2_true, L1, T_nm1_true, T_pred2_true);
-                        T_pred2_true.Add(L2, T_n_true);
+                        add(L0, T_nm2_true, L1, T_nm1_true, T_np1_pred2_true);
+                        T_np1_pred2_true.Add(L2, T_n_true);
                     }
+                    mfem::Vector T_np1_bdf2_true(N_true);
+                    t_solver->GetBDF2Solution().GetTrueDofs(T_np1_bdf2_true);
                     auto err2 = ComputeAdaptiveError(
-                        T_pred2_true, t_solver->GetBDF2Solution(), dt, sim.adaptive_reltol,
+                        T_np1_pred2_true, T_np1_bdf2_true, dt, sim.adaptive_reltol,
                         sim.adaptive_abstol, sim.eta_safety, sim.eta_max, sim.eta_min, dt_min, 2);
-                    wrms_2 = err2.wrms;
-                    dt_new_2 = err2.dt_new;
+                    double wrms_2 = err2.wrms;
+                    double dt_new_2 = err2.dt_new;
                 }
 
                 // --- Adaptive order selection: pick order giving largest acceptable dt ---
@@ -265,7 +260,7 @@ void TransientSolver::SolveTransient()
                     }
                     else
                     {
-                        t_solver->GetTemperature() = T_old;
+                        t_solver->GetTemperature() = T_n;
                         rejected_steps++;
                         dt = dt_new;
                         logger->info("Step rejected: wrms1={:.4e} wrms2={:.4e}, dt->{:.4e}", wrms_1,
@@ -274,9 +269,15 @@ void TransientSolver::SolveTransient()
                     }
                 }
 
-                // Apply the chosen order's solution
+                // Apply the chosen order's solution.
+                // BDF1 solution is chosen by default in function SolveBDF1,
+                // don't need to copy if accepted_order==1
+                
+                // if (accepted_order == 1)
+                // t_solver->GetTemperature() = t_solver->GetBDF1Solution();
                 if (accepted_order == 2)
-                    t_solver->GetTemperature().Distribute(t_solver->GetBDF2Solution());
+                    t_solver->GetTemperature() = t_solver->GetBDF2Solution();
+            
             }
         }
 
@@ -286,7 +287,7 @@ void TransientSolver::SolveTransient()
             if (T_n_true.Size() == 0)
             {
                 T_n_true.SetSize(N_true);
-                T_old.GetTrueDofs(T_n_true);
+                T_n.GetTrueDofs(T_n_true);
             }
             T_nm2_true = T_nm1_true;
             T_nm1_true = T_n_true;
@@ -334,6 +335,7 @@ void TransientSolver::SolveTransient()
 
         if (has_t)
             m_solver->SetTemperatureField(&t_solver->GetTemperature());
+
         m_solver->CacheStiffnessMatrix();
 
         for (auto &snap : output_snapshots)

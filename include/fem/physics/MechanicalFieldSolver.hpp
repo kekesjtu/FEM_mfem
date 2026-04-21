@@ -1,11 +1,12 @@
 #pragma once
 
+#include "fem/BCbuilder/MechanicalBCBuilder.hpp"
+#include "fem/coeff/MechanicalCoeffs.hpp"
 #include "fem/frontend/Config.hpp"
 #include "fem/solver/ILinearSolver.hpp"
 #include "mfem.hpp"
 
 #include <memory>
-#include <vector>
 
 namespace fem::physics
 {
@@ -15,7 +16,8 @@ class MechanicalFieldSolver
   public:
     explicit MechanicalFieldSolver(frontend::ProjectConfig &config);
 
-    /// Set temperature GridFunction for thermal expansion coupling
+    /// Optionally set an external temperature GridFunction for thermal expansion coupling.
+    /// If not set, the solver uses the reference temperature everywhere, so thermal strain is zero.
     void SetTemperatureField(mfem::GridFunction *temperature_gf);
 
     /// Full solve (assemble + solve). Used for one-off or steady-state.
@@ -39,28 +41,14 @@ class MechanicalFieldSolver
     }
 
   private:
-    void BuildBCMarkers();
-    std::unique_ptr<mfem::Coefficient> BuildTempCoefficient();
-
     frontend::ProjectConfig &config_;
     mfem::ParGridFunction displacement_;
-    mfem::GridFunction *temperature_gf_ = nullptr;
 
     // --- Constant coefficients (built once) ---
-    std::unique_ptr<mfem::Coefficient> cached_lambda_;
-    std::unique_ptr<mfem::Coefficient> cached_mu_;
-    std::unique_ptr<mfem::VectorCoefficient> cached_body_force_;
-    std::unique_ptr<mfem::Coefficient> cached_alpha_;
+    coeff::MechanicalCoeffs coeffs_;
 
-    // --- Cached BC markers (built once) ---
-    mfem::Array<int> cached_essential_bdr_;
-    mfem::Array<int> cached_essential_tdofs_;
-    std::vector<mfem::VectorConstantCoefficient> cached_disp_coeffs_;
-    std::vector<mfem::Array<int>> cached_disp_markers_;
-    std::vector<mfem::ConstantCoefficient> cached_penalty_coeffs_;
-    std::vector<mfem::Array<int>> cached_nd_markers_;
-    std::vector<mfem::ConstantCoefficient> cached_pressure_coeffs_;
-    std::vector<mfem::Array<int>> cached_pressure_markers_;
+    // --- Cached BC data (built once) ---
+    BCbuilder::MechanicalBCData cached_bc_;
 
     // --- Cached stiffness matrix data ---
     bool stiffness_cached_ = false;

@@ -21,16 +21,12 @@ class ExpressionCoefficient : public mfem::Coefficient
     /// @param property_name  e.g. "electrical_conductivity", "diffusion"
     /// @param db             material database with domain->material and material->properties maps
     /// @param mesh           the mesh (to get element attributes)
-    /// @param temperature_gf optional temperature field for T-dependent expressions
+    /// @param temperature_gf optional late-bound temperature field handle for T-dependent
+    /// expressions
     ExpressionCoefficient(const std::string &property_name, const frontend::MaterialDatabase &db,
-                          mfem::Mesh &mesh, mfem::GridFunction *temperature_gf = nullptr);
+                          mfem::Mesh &mesh, mfem::GridFunction * const *temperature_gf = nullptr);
 
     double Eval(mfem::ElementTransformation &T, const mfem::IntegrationPoint &ip) override;
-
-    void SetTemperatureGridFunction(mfem::GridFunction *gf)
-    {
-        temperature_gf_ = gf;
-    }
 
     /// Set the fallback temperature (K) used when no temperature GridFunction is available.
     void SetReferenceTemperature(double T_ref)
@@ -48,7 +44,7 @@ class ExpressionCoefficient : public mfem::Coefficient
 
     // attribute -> expression (1-based indexing, slot 0 unused)
     std::vector<DomainExpression> attr_to_expr_;
-    mfem::GridFunction *temperature_gf_;
+    mfem::GridFunction * const *temperature_gf_;
     mfem::Mesh &mesh_;
     double reference_temperature_ = 293.15;
     mutable mfem::Vector phys_point_buf_;  // pre-allocated buffer for Transform
@@ -72,20 +68,34 @@ class PiecewiseConstantCoefficient : public mfem::Coefficient
 class JouleHeatingCoefficient : public mfem::Coefficient
 {
   public:
-    JouleHeatingCoefficient(mfem::Coefficient &sigma, mfem::GridFunction &voltage);
+    JouleHeatingCoefficient(mfem::Coefficient * const *sigma = nullptr,
+                            mfem::GridFunction * const *voltage = nullptr);
 
     double Eval(mfem::ElementTransformation &T, const mfem::IntegrationPoint &ip) override;
 
   private:
-    mfem::Coefficient &sigma_;
-    mfem::GridFunction &voltage_;
+    mfem::Coefficient * const *sigma_ = nullptr;
+    mfem::GridFunction * const *voltage_ = nullptr;
     mutable mfem::Vector grad_v_buf_;  // pre-allocated buffer for gradient
+};
+
+class CombinedHeatSourceCoefficient : public mfem::Coefficient
+{
+  public:
+    CombinedHeatSourceCoefficient(mfem::Coefficient *base_source,
+                                  JouleHeatingCoefficient *joule_source)
+        : base_source_(base_source), joule_source_(joule_source)
+    {
+    }
+
+    double Eval(mfem::ElementTransformation &T, const mfem::IntegrationPoint &ip) override;
+
+  private:
+    mfem::Coefficient *base_source_ = nullptr;
+    JouleHeatingCoefficient *joule_source_ = nullptr;
 };
 
 /// Utility: check if a material property is purely constant across all domains
 bool IsPropertyConstant(const std::string &property_name, const frontend::MaterialDatabase &db);
-
-/// Build max attribute count from mesh
-int GetMaxAttribute(mfem::Mesh &mesh);
 
 }  // namespace fem::coeff

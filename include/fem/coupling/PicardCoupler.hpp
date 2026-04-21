@@ -33,7 +33,7 @@ class PicardCoupler
     int max_iterations_;
     double tolerance_;
     double relaxation_;
-    mfem::Vector T_prev_;
+    mfem::Vector T_prev_true_;
     mfem::Vector delta_;
 };
 

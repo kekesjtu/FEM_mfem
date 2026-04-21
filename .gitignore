@@ -2,6 +2,10 @@
 build/
 cmake-build-*/
 
+#mesh data
+mesh_data/
+
+
 # Runtime outputs
 results/
 

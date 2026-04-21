@@ -1,13 +1,12 @@
 #pragma once
 
-#include "fem/assembly/ElectrostaticAssembler.hpp"
+#include "fem/BCbuilder/ScalarBCBuilder.hpp"
+#include "fem/coeff/ElectrostaticCoeffs.hpp"
 #include "fem/frontend/Config.hpp"
-#include "fem/frontend/Expression.hpp"
 #include "fem/solver/ILinearSolver.hpp"
 #include "mfem.hpp"
 
 #include <memory>
-#include <vector>
 
 namespace fem::physics
 {
@@ -29,14 +28,6 @@ class ElectrostaticFieldSolver
 
     void Solve();
 
-    struct Coefficients
-    {
-        std::unique_ptr<mfem::Coefficient> local_sigma;
-        mfem::Coefficient *sigma = nullptr;
-        mfem::ConstantCoefficient source{0.0};
-    };
-    Coefficients BuildCoefficients();
-
     mfem::ParGridFunction &GetVoltage()
     {
         return voltage_;
@@ -46,20 +37,20 @@ class ElectrostaticFieldSolver
         return voltage_;
     }
 
-  private:
-    void BuildBCMarkers();
+    mfem::Coefficient *GetSigma();
+    const mfem::Coefficient *GetSigma() const;
 
+  private:
     frontend::ProjectConfig &config_;
     mfem::ParGridFunction voltage_;
     mfem::GridFunction *temperature_gf_ = nullptr;
     mfem::Coefficient *sigma_ = nullptr;
 
-    /// Parsed expressions for time-varying Dirichlet BCs (index matches dirichlet_bcs).
-    std::vector<frontend::Expression> bc_expressions_;
+    // --- Field coefficients ---
+    coeff::ElectrostaticCoeffs coeffs_;
 
     // --- Cached BC data (markers are immutable; only Dirichlet values update) ---
-    assembly::ElectrostaticBCData cached_bc_;
-    mfem::Array<int> cached_essential_tdofs_;
+    BCbuilder::ScalarBCData cached_bc_;
 
     // --- Cached linear solver (reuse across Picard iterations) ---
     std::unique_ptr<solver::ILinearSolver> cached_solver_;
