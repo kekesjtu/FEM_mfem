@@ -6,7 +6,9 @@
     "uniform_refinement_levels": 0,
     "solver": "pcg",
     "output_dir": "results/bipolar_thermo_mechanical",
-    "log_level": "info"
+    "log_level": "info",
+    "comsol_reference_path": "results/bipolar_displacement.txt",
+    "compare_args": ""
   },
   "materials": [
     {

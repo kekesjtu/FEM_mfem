@@ -1,0 +1,99 @@
+{
+  "$schema": "../docs/physics.schema.json",
+  "simulation": {
+    "mesh_path": "mesh_data/busbar3.msh",
+    "order": 1,
+    "uniform_refinement_levels": 0,
+    "solver": "pcg",
+    "output_dir": "results/busbar_transient_vbc3",
+    "log_level": "info",
+    "picard_max_iterations": 25,
+    "picard_tolerance": 1.0e-10,
+    "picard_relaxation": 1.0,
+    "transient_t_start": 0,
+    "transient_t_end": 0.01,
+    "transient_dt": 0.001,
+    "transient_enabled": true,
+    "transient_output_interval": 0.001,
+    "adaptive_dt": true,
+    "adaptive_reltol": 2.5e-6,
+    "adaptive_abstol": 5.0e-9,
+    "dt_min": 1.0e-5,
+    "dt_max": 0.005,
+    "eta_max": 3,
+    "eta_min": 0.2,
+    "eta_safety": 0.8
+  },
+  "materials": [
+    {
+      "name": "copper",
+      "properties": {
+        "diffusion": "400.0",
+        "electrical_conductivity": "5.998e7/(1.0 + 0.0039 * (T - 293.15))",
+        "young_modulus": "1.1e11",
+        "poisson_ratio": "0.35",
+        "thermal_expansion_secant": "1.7e-5",
+        "density": "8960",
+        "heat_capacity": "385"
+      }
+    },
+    {
+      "name": "titanium",
+      "properties": {
+        "diffusion": "7.5",
+        "electrical_conductivity": "7.407e5",
+        "young_modulus": "1.05e11",
+        "poisson_ratio": "0.33",
+        "thermal_expansion_secant": "7.06e-6",
+        "density": "4940",
+        "heat_capacity": "710"
+      }
+    }
+  ],
+  "domain_materials": {
+    "copper": [1],
+    "titanium": [2, 3, 4, 5, 6, 7]
+  },
+  "fields": [
+    {
+      "type": "electrostatic",
+      "source_default": "0.0",
+
+      "dirichlet_boundary_conditions": [
+        {
+          "bdr_attributes": [43],
+          "value": "0.2*sin(100*pi*t)"
+        },
+        {
+          "bdr_attributes": [8, 15],
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "type": "thermal",
+      "source_default": "0.0",
+      "initial_temperature": 293.15,
+      "robin_boundary_conditions": [
+        {
+          "bdr_attributes": [
+            1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 19, 20, 22, 24, 26, 28, 29, 30, 31,
+            32, 37, 39, 40, 41, 42
+          ],
+          "l": 5.0,
+          "q": 1465.75
+        }
+      ]
+    },
+    {
+      "type": "mechanical",
+      "body_force_default": [0.0, 0.0, 0.0],
+      "displacement_boundary_conditions": [
+        {
+          "bdr_attributes": [8, 15, 43],
+          "value": [0.0, 0.0, 0.0]
+        }
+      ]
+    }
+  ]
+}

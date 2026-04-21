@@ -1,4 +1,4 @@
-#include "fem/coeff/Coeffmanagaer.hpp"
+#include "fem/coeff/CoefficientManager.hpp"
 
 #include "fem/log/Logger.hpp"
 
@@ -10,12 +10,7 @@ namespace fem::coeff
 
 int GetMaxAttribute(mfem::Mesh &mesh)
 {
-    int max_attr = 0;
-    for (int i = 0; i < mesh.GetNE(); ++i)
-    {
-        max_attr = std::max(max_attr, mesh.GetAttribute(i));
-    }
-    return max_attr;
+    return mesh.attributes.Max();
 }
 
 bool IsPropertyConstant(const std::string &property_name, const frontend::MaterialDatabase &db)
@@ -123,11 +118,11 @@ double ExpressionCoefficient::Eval(mfem::ElementTransformation &T, const mfem::I
 
     // Need to evaluate expression with spatial coords and temperature
     frontend::EvalContext ctx;
-    mfem::Vector phys_point;
-    T.Transform(ip, phys_point);
-    ctx.x = phys_point.Size() > 0 ? phys_point(0) : 0.0;
-    ctx.y = phys_point.Size() > 1 ? phys_point(1) : 0.0;
-    ctx.z = phys_point.Size() > 2 ? phys_point(2) : 0.0;
+    phys_point_buf_.SetSize(T.GetSpaceDim());
+    T.Transform(ip, phys_point_buf_);
+    ctx.x = phys_point_buf_.Size() > 0 ? phys_point_buf_(0) : 0.0;
+    ctx.y = phys_point_buf_.Size() > 1 ? phys_point_buf_(1) : 0.0;
+    ctx.z = phys_point_buf_.Size() > 2 ? phys_point_buf_(2) : 0.0;
 
     if (temperature_gf_)
     {
@@ -223,13 +218,13 @@ double JouleHeatingCoefficient::Eval(mfem::ElementTransformation &T,
     const double sigma_val = sigma_.Eval(T, ip);
 
     const int dim = T.GetSpaceDim();
-    mfem::Vector grad_v(dim);
-    voltage_.GetGradient(T, grad_v);
+    grad_v_buf_.SetSize(dim);
+    voltage_.GetGradient(T, grad_v_buf_);
 
     double grad_sq = 0.0;
     for (int d = 0; d < dim; ++d)
     {
-        grad_sq += grad_v(d) * grad_v(d);
+        grad_sq += grad_v_buf_(d) * grad_v_buf_(d);
     }
 
     return sigma_val * grad_sq;

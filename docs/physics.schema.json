@@ -20,7 +20,7 @@
         "output_dir": { "type": "string", "default": "results" },
         "solver": {
           "type": "string",
-          "enum": ["pcg", "umfpack", "mumps", "pardiso"],
+          "enum": ["pcg", "mumps", "pardiso"],
           "default": "pcg",
           "description": "Default linear solver for all fields."
         },
@@ -107,10 +107,40 @@
           "default": 0.0,
           "description": "Maximum allowed time step. 0 means use transient_output_interval."
         },
+        "eta_safety": {
+          "type": "number",
+          "exclusiveMinimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.9,
+          "description": "Safety factor for adaptive time step scaling."
+        },
+        "eta_max": {
+          "type": "number",
+          "exclusiveMinimum": 1.0,
+          "default": 2.0,
+          "description": "Maximum growth factor for adaptive time step."
+        },
+        "eta_min": {
+          "type": "number",
+          "exclusiveMinimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.2,
+          "description": "Minimum shrink factor for adaptive time step."
+        },
         "log_level": {
           "type": "string",
           "enum": ["trace", "debug", "info", "warn", "error", "critical"],
           "default": "info"
+        },
+        "comsol_reference_path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to COMSOL reference result file for automatic comparison after solve. Leave empty to skip comparison."
+        },
+        "compare_args": {
+          "type": "string",
+          "default": "",
+          "description": "Extra arguments to pass to the comparison script (e.g. '--transient --field-names V,T,disp')."
         }
       },
       "additionalProperties": false

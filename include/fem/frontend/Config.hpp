@@ -34,6 +34,11 @@ struct SimulationConfig
     double adaptive_abstol = 1.0e-6;
     double dt_min = 1.0e-6;
     double dt_max = 0.0;  // 0 = use transient_output_interval
+    double eta_safety = 0.9;
+    double eta_max = 2.0;
+    double eta_min = 0.2;
+    std::string comsol_reference_path;
+    std::string compare_args;
 
     /// Return the effective solver name for a given field type.
     const std::string &GetSolver(const std::string &field_type) const
@@ -124,57 +129,38 @@ struct MechanicalFieldConfig
 
 struct FEConfig
 {
-    std::unique_ptr<mfem::Mesh> mesh;
-    // scalar field FE objects (shared for electrostatic/thermal)
-    std::unique_ptr<mfem::FiniteElementCollection> scalar_fec;
-    std::unique_ptr<mfem::FiniteElementSpace> scalar_fespace;
-    // vector field FE objects (for mechanical)
-    std::unique_ptr<mfem::FiniteElementCollection> vector_fec;
-    std::unique_ptr<mfem::FiniteElementSpace> vector_fespace;
-
-#ifdef MFEM_USE_MPI
+    // Serial mesh kept for loading; ParMesh is always created from it.
+    std::unique_ptr<mfem::Mesh> serial_mesh;
     std::unique_ptr<mfem::ParMesh> pmesh;
-    std::unique_ptr<mfem::ParFiniteElementSpace> par_scalar_fespace;
-    std::unique_ptr<mfem::ParFiniteElementSpace> par_vector_fespace;
-#endif
 
-    /// True if parallel FE spaces are available and should be used.
-    bool IsParallel() const
+    std::unique_ptr<mfem::FiniteElementCollection> scalar_fec;
+    std::unique_ptr<mfem::ParFiniteElementSpace> scalar_fespace;
+
+    std::unique_ptr<mfem::FiniteElementCollection> vector_fec;
+    std::unique_ptr<mfem::ParFiniteElementSpace> vector_fespace;
+
+    mfem::ParMesh &GetMesh()
     {
-#ifdef MFEM_USE_MPI
-        return pmesh != nullptr;
-#else
-        return false;
-#endif
+        return *pmesh;
     }
-
-    /// Return the active mesh (parallel if available, serial otherwise).
-    mfem::Mesh &GetMesh() const
+    [[nodiscard]] const mfem::ParMesh &GetMesh() const
     {
-#ifdef MFEM_USE_MPI
-        if (pmesh)
-            return *pmesh;
-#endif
-        return *mesh;
+        return *pmesh;
     }
-
-    /// Return the active scalar FE space.
-    mfem::FiniteElementSpace &GetScalarFESpace() const
+    mfem::ParFiniteElementSpace &GetScalarFESpace()
     {
-#ifdef MFEM_USE_MPI
-        if (par_scalar_fespace)
-            return *par_scalar_fespace;
-#endif
         return *scalar_fespace;
     }
-
-    /// Return the active vector FE space.
-    mfem::FiniteElementSpace &GetVectorFESpace() const
+    [[nodiscard]] const mfem::ParFiniteElementSpace &GetScalarFESpace() const
     {
-#ifdef MFEM_USE_MPI
-        if (par_vector_fespace)
-            return *par_vector_fespace;
-#endif
+        return *scalar_fespace;
+    }
+    mfem::ParFiniteElementSpace &GetVectorFESpace()
+    {
+        return *vector_fespace;
+    }
+    [[nodiscard]] const mfem::ParFiniteElementSpace &GetVectorFESpace() const
+    {
         return *vector_fespace;
     }
 };

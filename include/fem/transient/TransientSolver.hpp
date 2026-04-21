@@ -17,25 +17,20 @@ struct TransientSnapshot
     mfem::Vector displacement;
 };
 
-/// Predictor-corrector adaptive time stepper with WRMS error control.
-/// Handles backward-Euler time integration, Picard coupling per step,
-/// snapshot collection, interpolation, and export.
+/// Predictor-corrector adaptive time stepper with order selection and WRMS error control.
+/// Handles backward-Euler / BDF2 time integration, Picard coupling
+/// per step, streaming snapshot output, and export.
 class TransientSolver
 {
   public:
     explicit TransientSolver(frontend::ProjectConfig &config);
 
     /// Run the full transient simulation.
-    void Run();
+    void SolveTransient();
 
   private:
-    /// Interpolate raw snapshots to a uniform output_interval grid.
-    std::vector<TransientSnapshot> InterpolateSnapshots(
-        const std::vector<TransientSnapshot> &raw_snapshots, double t_start, double t_end,
-        double output_interval) const;
-
     /// Export transient snapshots (ParaView + txt).
-    void ExportTransientResults(const std::vector<TransientSnapshot> &snapshots);
+    void ExportTransientResults(std::vector<TransientSnapshot> snapshots);
 
     frontend::ProjectConfig &config_;
 };

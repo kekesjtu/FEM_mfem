@@ -3,7 +3,6 @@
 #include "fem/frontend/Expression.hpp"
 #include "fem/log/Logger.hpp"
 
-#include <filesystem>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -46,9 +45,15 @@ ProjectConfig ConfigLoader::LoadFromFile(const std::string &path)
     loader.LoadFields(root);
     loader.BuildFE();
 
-    logger->info("Config loaded. Electric={}, Thermal={}, Mechanical={}",
+    logger->info("Config loaded. Electrostatic={}, Thermal={}, Mechanical={}",
                  loader.config_.HasElectricField(), loader.config_.HasThermalField(),
                  loader.config_.HasMechanicalField());
+    logger->info("Solver for each field: Electrostatic='{}', Thermal='{}', Mechanical='{}'",
+                 loader.config_.simulation.solver_electrostatic,
+                 loader.config_.simulation.solver_thermal,
+                 loader.config_.simulation.solver_mechanical);
+    logger->info("Is nonlinear : {}", loader.config_.NeedsPicardIteration() ? "true" : "false");
+    logger->info("Is transient problem: {}", loader.config_.simulation.transient_enabled);
 
     return std::move(loader.config_);
 }
@@ -68,9 +73,9 @@ void ConfigLoader::LoadSimulation(const json &root)
     s.output_dir = ReadOrDefault<std::string>(sim, "output_dir", "results");
     s.log_level = ReadOrDefault<std::string>(sim, "log_level", "info");
     s.solver = ReadOrDefault<std::string>(sim, "solver", "pcg");
-    s.solver_electrostatic = ReadOrDefault<std::string>(sim, "solver_electrostatic", "");
-    s.solver_thermal = ReadOrDefault<std::string>(sim, "solver_thermal", "");
-    s.solver_mechanical = ReadOrDefault<std::string>(sim, "solver_mechanical", "");
+    s.solver_electrostatic = ReadOrDefault<std::string>(sim, "solver_electrostatic", s.solver);
+    s.solver_thermal = ReadOrDefault<std::string>(sim, "solver_thermal", s.solver);
+    s.solver_mechanical = ReadOrDefault<std::string>(sim, "solver_mechanical", s.solver);
     s.picard_max_iterations = ReadOrDefault(sim, "picard_max_iterations", 30);
     s.picard_tolerance = ReadOrDefault(sim, "picard_tolerance", 1.0e-6);
     s.picard_relaxation = ReadOrDefault(sim, "picard_relaxation", 1.0);
@@ -84,6 +89,37 @@ void ConfigLoader::LoadSimulation(const json &root)
     s.adaptive_abstol = ReadOrDefault(sim, "adaptive_abstol", 1.0e-6);
     s.dt_min = ReadOrDefault(sim, "dt_min", 1.0e-6);
     s.dt_max = ReadOrDefault(sim, "dt_max", 0.0);
+    s.eta_safety = ReadOrDefault(sim, "eta_safety", 0.9);
+    s.eta_max = ReadOrDefault(sim, "eta_max", 2.0);
+    s.eta_min = ReadOrDefault(sim, "eta_min", 0.2);
+    s.comsol_reference_path = ReadOrDefault<std::string>(sim, "comsol_reference_path", "");
+    s.compare_args = ReadOrDefault<std::string>(sim, "compare_args", "");
+
+    // --- Adaptive parameter validation ---
+    if (s.transient_enabled)
+    {
+        auto logger = fem::log::Get();
+        if (s.adaptive_reltol <= 0.0 && s.adaptive_abstol <= 0.0)
+            throw std::runtime_error("adaptive_reltol and adaptive_abstol cannot both be <= 0");
+        if (s.adaptive_reltol < 0.0)
+            throw std::runtime_error("adaptive_reltol must be >= 0");
+        if (s.adaptive_abstol < 0.0)
+            throw std::runtime_error("adaptive_abstol must be >= 0");
+        if (s.dt_min <= 0.0)
+            throw std::runtime_error("dt_min must be > 0");
+        double eff_dt_max = (s.dt_max > 0.0) ? s.dt_max : s.transient_output_interval;
+        if (s.dt_min > eff_dt_max)
+            throw std::runtime_error("dt_min (" + std::to_string(s.dt_min) +
+                                     ") must be <= dt_max (" + std::to_string(eff_dt_max) + ")");
+        if (s.eta_max <= 1.0)
+            throw std::runtime_error("eta_max must be > 1.0");
+        if (s.eta_min <= 0.0 || s.eta_min >= 1.0)
+            throw std::runtime_error("eta_min must be in (0, 1)");
+        if (s.eta_safety <= 0.0 || s.eta_safety > 1.0)
+            throw std::runtime_error("eta_safety must be in (0, 1]");
+        if (s.eta_min >= s.eta_max)
+            throw std::runtime_error("eta_min must be < eta_max");
+    }
 }
 
 void ConfigLoader::LoadMaterials(const json &root)
@@ -108,7 +144,7 @@ void ConfigLoader::LoadMaterials(const json &root)
     const auto &dm = root.at("domain_materials");
     for (auto it = dm.begin(); it != dm.end(); ++it)
     {
-        const std::string mat_name = it.key();
+        const std::string &mat_name = it.key();
         std::vector<int> domains = it.value().get<std::vector<int>>();
         db.domain_to_material[mat_name] = std::move(domains);
     }
@@ -300,78 +336,41 @@ void ConfigLoader::BuildFE()
     auto logger = fem::log::Get();
     const auto &sim = config_.simulation;
 
-    // Load mesh
+    // Load serial mesh first
     logger->info("Loading mesh from: {}", sim.mesh_path);
-    config_.fe.mesh = std::make_unique<mfem::Mesh>(sim.mesh_path.c_str(), 1, 1);
+    config_.fe.serial_mesh = std::make_unique<mfem::Mesh>(sim.mesh_path.c_str(), 1, 1);
 
     for (int i = 0; i < sim.uniform_refinement_levels; ++i)
     {
-        config_.fe.mesh->UniformRefinement();
+        config_.fe.serial_mesh->UniformRefinement();
     }
 
-    const int dim = config_.fe.mesh->Dimension();
+    const int dim = config_.fe.serial_mesh->Dimension();
     logger->info("Mesh loaded: dim={}, elements={}, vertices={}, bdr_elements={}", dim,
-                 config_.fe.mesh->GetNE(), config_.fe.mesh->GetNV(), config_.fe.mesh->GetNBE());
+                 config_.fe.serial_mesh->GetNE(), config_.fe.serial_mesh->GetNV(),
+                 config_.fe.serial_mesh->GetNBE());
 
-    bool parallel = false;
-#ifdef MFEM_USE_MPI
-    parallel = mfem::Mpi::IsInitialized() && mfem::Mpi::WorldSize() > 1;
+    // Always create ParMesh (works with np=1 too)
+    logger->info("Execution mode: parallel (MPI ranks={})", mfem::Mpi::WorldSize());
+    config_.fe.pmesh = std::make_unique<mfem::ParMesh>(MPI_COMM_WORLD, *config_.fe.serial_mesh);
+    logger->info("ParMesh created: local elements={}", config_.fe.pmesh->GetNE());
 
-    if (parallel)
-    {
-        logger->info("Execution mode: parallel (MPI ranks={})", mfem::Mpi::WorldSize());
-        config_.fe.pmesh = std::make_unique<mfem::ParMesh>(MPI_COMM_WORLD, *config_.fe.mesh);
-        logger->info("ParMesh created: local elements={}", config_.fe.pmesh->GetNE());
-
-        if (config_.HasElectricField() || config_.HasThermalField())
-        {
-            config_.fe.scalar_fec = std::make_unique<mfem::H1_FECollection>(sim.order, dim);
-            config_.fe.par_scalar_fespace = std::make_unique<mfem::ParFiniteElementSpace>(
-                config_.fe.pmesh.get(), config_.fe.scalar_fec.get());
-            logger->info("Par scalar FE space: order={}, global_ndof={}", sim.order,
-                         config_.fe.par_scalar_fespace->GlobalTrueVSize());
-        }
-
-        if (config_.HasMechanicalField())
-        {
-            config_.fe.vector_fec = std::make_unique<mfem::H1_FECollection>(sim.order, dim);
-            config_.fe.par_vector_fespace = std::make_unique<mfem::ParFiniteElementSpace>(
-                config_.fe.pmesh.get(), config_.fe.vector_fec.get(), dim);
-            logger->info("Par vector FE space: order={}, global_ndof={}", sim.order,
-                         config_.fe.par_vector_fespace->GlobalTrueVSize());
-        }
-        return;
-    }
-#endif
-
-#ifdef MFEM_USE_MPI
-    if (mfem::Mpi::IsInitialized())
-    {
-        logger->info("Execution mode: serial (MPI ranks={})", mfem::Mpi::WorldSize());
-    }
-    else
-#endif
-    {
-        logger->info("Execution mode: serial");
-    }
-
-    // Serial path
     if (config_.HasElectricField() || config_.HasThermalField())
     {
         config_.fe.scalar_fec = std::make_unique<mfem::H1_FECollection>(sim.order, dim);
-        config_.fe.scalar_fespace = std::make_unique<mfem::FiniteElementSpace>(
-            config_.fe.mesh.get(), config_.fe.scalar_fec.get());
-        logger->info("Scalar FE space: order={}, ndof={}", sim.order,
-                     config_.fe.scalar_fespace->GetTrueVSize());
+        config_.fe.scalar_fespace = std::make_unique<mfem::ParFiniteElementSpace>(
+            config_.fe.pmesh.get(), config_.fe.scalar_fec.get());
+        logger->info("Scalar FE space: order={}, global_ndof={}", sim.order,
+                     config_.fe.scalar_fespace->GlobalTrueVSize());
     }
 
     if (config_.HasMechanicalField())
     {
         config_.fe.vector_fec = std::make_unique<mfem::H1_FECollection>(sim.order, dim);
-        config_.fe.vector_fespace = std::make_unique<mfem::FiniteElementSpace>(
-            config_.fe.mesh.get(), config_.fe.vector_fec.get(), dim);
-        logger->info("Vector FE space: order={}, ndof={}", sim.order,
-                     config_.fe.vector_fespace->GetTrueVSize());
+        config_.fe.vector_fespace = std::make_unique<mfem::ParFiniteElementSpace>(
+            config_.fe.pmesh.get(), config_.fe.vector_fec.get(), dim);
+        logger->info("Vector FE space: order={}, global_ndof={}", sim.order,
+                     config_.fe.vector_fespace->GlobalTrueVSize());
     }
 }
 
@@ -390,8 +389,8 @@ bool ProjectConfig::NeedsPicardIteration() const
         if (it != props.end())
         {
             const std::string &expr = it->second;
-            // If expression contains 'T', it depends on temperature
-            if (expr.find('T') != std::string::npos)
+            frontend::Expression test_expr(expr);
+            if (test_expr.UsesVariable("T"))
             {
                 return true;
             }

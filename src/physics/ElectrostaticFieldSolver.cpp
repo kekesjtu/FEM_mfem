@@ -1,7 +1,6 @@
 #include "fem/physics/ElectrostaticFieldSolver.hpp"
 
-#include "fem/assembly/MfemPoissonAssembler.hpp"
-#include "fem/coeff/Coeffmanagaer.hpp"
+#include "fem/coeff/CoefficientManager.hpp"
 #include "fem/log/Logger.hpp"
 #include "fem/solver/LinearSolverFactory.hpp"
 
@@ -17,14 +16,13 @@ ElectrostaticFieldSolver::ElectrostaticFieldSolver(frontend::ProjectConfig &conf
     for (const auto &dbc : config_.electric_field.dirichlet_bcs)
     {
         if (!dbc.value_expr.empty())
-        {
             bc_expressions_.emplace_back(dbc.value_expr);
-        }
         else
-        {
             bc_expressions_.emplace_back(std::to_string(dbc.value));
-        }
     }
+
+    // Build and cache BC markers once (they never change)
+    BuildBCMarkers();
 }
 
 void ElectrostaticFieldSolver::SetTemperatureField(mfem::GridFunction *temperature_gf)
@@ -39,58 +37,104 @@ void ElectrostaticFieldSolver::SetElectricalConductivity(mfem::Coefficient *sigm
 
 void ElectrostaticFieldSolver::UpdateBoundaryConditions(double t)
 {
-    auto &bcs = config_.electric_field.dirichlet_bcs;
+    const auto &bcs = config_.electric_field.dirichlet_bcs;
     for (size_t i = 0; i < bcs.size(); ++i)
     {
         if (!bcs[i].value_expr.empty())
         {
-            bcs[i].value = bc_expressions_[i].Evaluate({0, 0, 0, t, 0});
+            double val = bc_expressions_[i].Evaluate({0, 0, 0, t, 0});
+            cached_bc_.dirichlet_coeffs[i].constant = val;
         }
     }
+}
+
+void ElectrostaticFieldSolver::BuildBCMarkers()
+{
+    const int num_bdr = config_.fe.GetMesh().bdr_attributes.Max();
+    const auto &field_config = config_.electric_field;
+
+    // Dirichlet BCs
+    cached_bc_.essential_bdr.SetSize(num_bdr);
+    cached_bc_.essential_bdr = 0;
+    cached_bc_.dirichlet_coeffs.reserve(field_config.dirichlet_bcs.size());
+    cached_bc_.dirichlet_markers.reserve(field_config.dirichlet_bcs.size());
+    for (const auto &dbc : field_config.dirichlet_bcs)
+    {
+        mfem::Array<int> marker(num_bdr);
+        marker = 0;
+        for (int attr : dbc.bdr_attributes)
+        {
+            if (attr >= 1 && attr <= num_bdr)
+            {
+                marker[attr - 1] = 1;
+                cached_bc_.essential_bdr[attr - 1] = 1;
+            }
+        }
+        cached_bc_.dirichlet_coeffs.emplace_back(dbc.value);
+        cached_bc_.dirichlet_markers.push_back(std::move(marker));
+    }
+
+    // Robin BCs
+    cached_bc_.robin_l_coeffs.reserve(field_config.robin_bcs.size());
+    cached_bc_.robin_q_coeffs.reserve(field_config.robin_bcs.size());
+    cached_bc_.robin_markers.reserve(field_config.robin_bcs.size());
+    for (const auto &rbc : field_config.robin_bcs)
+    {
+        mfem::Array<int> marker(num_bdr);
+        marker = 0;
+        for (int attr : rbc.bdr_attributes)
+        {
+            if (attr >= 1 && attr <= num_bdr)
+                marker[attr - 1] = 1;
+        }
+        cached_bc_.robin_l_coeffs.emplace_back(rbc.l);
+        cached_bc_.robin_q_coeffs.emplace_back(rbc.q);
+        cached_bc_.robin_markers.push_back(std::move(marker));
+    }
+
+    // Cache essential tdofs (won't change)
+    config_.fe.GetScalarFESpace().GetEssentialTrueDofs(cached_bc_.essential_bdr,
+                                                       cached_essential_tdofs_);
+}
+
+ElectrostaticFieldSolver::Coefficients ElectrostaticFieldSolver::BuildCoefficients()
+{
+    Coefficients c;
+    if (sigma_)
+    {
+        c.sigma = sigma_;
+    }
+    else
+    {
+        auto local_sigma = std::make_unique<coeff::ExpressionCoefficient>(
+            "electrical_conductivity", config_.materials, config_.fe.GetMesh(), temperature_gf_);
+        if (!temperature_gf_)
+            local_sigma->SetReferenceTemperature(config_.electric_field.reference_temperature);
+        c.sigma = local_sigma.get();
+        c.local_sigma = std::move(local_sigma);
+    }
+    return c;
 }
 
 void ElectrostaticFieldSolver::Solve()
 {
     auto logger = fem::log::Get();
-    logger->info("=== Solving electrostatic field ===");
+    logger->debug("Solving electrostatic field");
 
-    const auto &field_config = config_.electric_field;
+    auto coeffs = BuildCoefficients();
 
-    // Build electrical conductivity coefficient (sigma), optionally T-dependent.
-    // If an external sigma was provided (shared with ThermalFieldSolver for Joule heating),
-    // reuse it to avoid evaluating the same expression twice per quadrature point.
-    std::unique_ptr<coeff::ExpressionCoefficient> local_sigma;
-    if (!sigma_)
+    auto system = assembly::ElectrostaticAssembler::Assemble(
+        config_.fe.GetScalarFESpace(), *coeffs.sigma, coeffs.source, cached_bc_, voltage_);
+
+    if (!cached_solver_)
     {
-        local_sigma = std::make_unique<coeff::ExpressionCoefficient>(
-            "electrical_conductivity", config_.materials, config_.fe.GetMesh(), temperature_gf_);
-        if (!temperature_gf_)
-            local_sigma->SetReferenceTemperature(config_.electric_field.reference_temperature);
-        sigma_ = local_sigma.get();
+        cached_solver_ = solver::CreateLinearSolver(config_.simulation.GetSolver("electrostatic"),
+                                                    1e-12, 1e-12, 2000, 0);
     }
-
-    // Source term (usually 0 for electrostatics: -div(sigma grad V) = 0)
-    mfem::ConstantCoefficient source_coeff(0.0);
-
-    // Assemble — boundary marker construction handled by assembler
-    assembly::PoissonAssemblyInput input{
-        config_.fe.GetScalarFESpace(), *sigma_, source_coeff, field_config.dirichlet_bcs,
-        field_config.robin_bcs,        0.0,
-    };
-
-    auto system = assembly::MfemPoissonAssembler::Assemble(input, voltage_);
-
-    // Solve
-    auto solver = solver::CreateLinearSolver(config_.simulation.GetSolver("electrostatic"), 1e-12,
-                                             1e-12, 2000, 0);
-    solver->Solve(*system.A, system.B, system.X);
-
-    // Recover the solution
+    cached_solver_->Solve(*system.A, system.B, system.X);
     system.bilinear->RecoverFEMSolution(system.X, *system.linear, voltage_);
 
-    if (!config_.fe.IsParallel())
-        logger->info("Electrostatic solve complete. V range: [{:.6e}, {:.6e}]", voltage_.Min(),
-                     voltage_.Max());
+    logger->debug("Electrostatic: V=[{:.6e}, {:.6e}]", voltage_.Min(), voltage_.Max());
 }
 
 }  // namespace fem::physics

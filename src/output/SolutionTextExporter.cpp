@@ -74,6 +74,7 @@ void SolutionTextExporter::ExportScalarNodalTxt(const std::string &txt_path,
         << "% x                       y                        z                        "
         << value_name << "\n";
 
+    mfem::Vector pt(dim);
     for (int v = 0; v < nv; ++v)
     {
         const auto &loc = locations[v];
@@ -82,7 +83,6 @@ void SolutionTextExporter::ExportScalarNodalTxt(const std::string &txt_path,
         auto *tr = mesh.GetElementTransformation(loc.element_id);
         auto ip = VertexIntegrationPoint(mesh, loc.element_id, loc.local_vertex_id);
         tr->SetIntPoint(&ip);
-        mfem::Vector pt;
         tr->Transform(ip, pt);
         double val = scalar_field.GetValue(*tr, ip);
         out << pt(0) << " " << pt(1) << " " << (dim > 2 ? pt(2) : 0.0) << " " << val << "\n";
@@ -115,6 +115,7 @@ void SolutionTextExporter::ExportVectorNodalTxt(const std::string &txt_path,
         << "_magnitude\n";
 
     mfem::Vector vec(dim);
+    mfem::Vector pt(dim);
     for (int v = 0; v < nv; ++v)
     {
         const auto &loc = locations[v];
@@ -123,7 +124,6 @@ void SolutionTextExporter::ExportVectorNodalTxt(const std::string &txt_path,
         auto *tr = mesh.GetElementTransformation(loc.element_id);
         auto ip = VertexIntegrationPoint(mesh, loc.element_id, loc.local_vertex_id);
         tr->SetIntPoint(&ip);
-        mfem::Vector pt;
         tr->Transform(ip, pt);
         vector_field.GetVectorValue(*tr, ip, vec);
         double mag2 = 0.0;
@@ -154,29 +154,14 @@ void SolutionTextExporter::ExportTransientNodalTxt(const std::string &txt_path, 
 
     const auto locations = BuildVertexSampleLocations(mesh);
 
-    // Create temporary GridFunctions for evaluation
-    std::vector<std::unique_ptr<mfem::GridFunction>> v_gfs, t_gfs, d_gfs;
-    for (int s = 0; s < nsnaps; ++s)
-    {
-        if (has_v)
-        {
-            auto g = std::make_unique<mfem::GridFunction>(&scalar_fespace);
-            *g = voltages[s];
-            v_gfs.push_back(std::move(g));
-        }
-        if (has_t)
-        {
-            auto g = std::make_unique<mfem::GridFunction>(&scalar_fespace);
-            *g = temperatures[s];
-            t_gfs.push_back(std::move(g));
-        }
-        if (has_d)
-        {
-            auto g = std::make_unique<mfem::GridFunction>(&vector_fespace);
-            *g = displacements[s];
-            d_gfs.push_back(std::move(g));
-        }
-    }
+    // Create reusable temporary GridFunctions (one per field type)
+    std::unique_ptr<mfem::GridFunction> v_gf, t_gf, d_gf;
+    if (has_v)
+        v_gf = std::make_unique<mfem::GridFunction>(&scalar_fespace);
+    if (has_t)
+        t_gf = std::make_unique<mfem::GridFunction>(&scalar_fespace);
+    if (has_d)
+        d_gf = std::make_unique<mfem::GridFunction>(&vector_fespace);
 
     std::filesystem::create_directories(std::filesystem::path(txt_path).parent_path());
     std::ofstream out(txt_path);
@@ -202,8 +187,16 @@ void SolutionTextExporter::ExportTransientNodalTxt(const std::string &txt_path, 
     }
     out << "\n";
 
-    // Data
+    // Data — iterate snapshot-major to minimize GF reassignment
     mfem::Vector vec(dim);
+    mfem::Vector pt(dim);
+
+    // Pre-compute vertex coordinates
+    struct VertexCoord
+    {
+        double x, y, z;
+    };
+    std::vector<VertexCoord> coords(nv);
     for (int v = 0; v < nv; ++v)
     {
         const auto &loc = locations[v];
@@ -212,27 +205,63 @@ void SolutionTextExporter::ExportTransientNodalTxt(const std::string &txt_path, 
         auto *tr = mesh.GetElementTransformation(loc.element_id);
         auto ip = VertexIntegrationPoint(mesh, loc.element_id, loc.local_vertex_id);
         tr->SetIntPoint(&ip);
-        mfem::Vector pt;
         tr->Transform(ip, pt);
+        coords[v] = {pt(0), pt(1), dim > 2 ? pt(2) : 0.0};
+    }
 
-        out << pt(0) << " " << pt(1) << " " << (dim > 2 ? pt(2) : 0.0);
-        for (int s = 0; s < nsnaps; ++s)
+    // Pre-evaluate all field values: [snap][field_values_per_vertex]
+    // Store as flat vectors to avoid per-vertex GF reassignment
+    const int nfields = fields_per_snap;
+    std::vector<std::vector<double>> snap_data(nsnaps);
+    for (int s = 0; s < nsnaps; ++s)
+    {
+        snap_data[s].resize(nv * nfields);
+        if (has_v)
+            *v_gf = voltages[s];
+        if (has_t)
+            *t_gf = temperatures[s];
+        if (has_d)
+            *d_gf = displacements[s];
+
+        for (int v = 0; v < nv; ++v)
         {
+            const auto &loc = locations[v];
+            if (loc.element_id < 0)
+                continue;
+            auto *tr = mesh.GetElementTransformation(loc.element_id);
+            auto ip = VertexIntegrationPoint(mesh, loc.element_id, loc.local_vertex_id);
+            tr->SetIntPoint(&ip);
+
+            int fi = 0;
             if (has_v)
-                out << " " << v_gfs[s]->GetValue(*tr, ip);
+                snap_data[s][v * nfields + fi++] = v_gf->GetValue(*tr, ip);
             if (has_t)
-                out << " " << t_gfs[s]->GetValue(*tr, ip);
+                snap_data[s][v * nfields + fi++] = t_gf->GetValue(*tr, ip);
             if (has_d)
             {
-                d_gfs[s]->GetVectorValue(*tr, ip, vec);
+                d_gf->GetVectorValue(*tr, ip, vec);
                 double mag2 = 0.0;
                 for (int d = 0; d < dim; ++d)
                     mag2 += vec(d) * vec(d);
-                out << " " << std::sqrt(mag2);
+                snap_data[s][v * nfields + fi++] = std::sqrt(mag2);
             }
+        }
+    }
+
+    // Write rows
+    for (int v = 0; v < nv; ++v)
+    {
+        const auto &loc = locations[v];
+        if (loc.element_id < 0)
+            continue;
+        out << coords[v].x << " " << coords[v].y << " " << coords[v].z;
+        for (int s = 0; s < nsnaps; ++s)
+        {
+            for (int fi = 0; fi < nfields; ++fi)
+                out << " " << snap_data[s][v * nfields + fi];
         }
         out << "\n";
     }
 }
 
-}  // namespace fem::post
+}  // namespace fem::output

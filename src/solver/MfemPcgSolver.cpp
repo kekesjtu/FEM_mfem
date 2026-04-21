@@ -11,52 +11,49 @@ MfemPcgSolver::MfemPcgSolver(double rel_tol, double abs_tol, int max_iter, int p
 
 void MfemPcgSolver::Solve(mfem::Operator &A, const mfem::Vector &b, mfem::Vector &x)
 {
-    auto *sparse_matrix = dynamic_cast<mfem::SparseMatrix *>(&A);
-    if (sparse_matrix)
-    {
-        mfem::DSmoother preconditioner(*sparse_matrix);
-
-        mfem::CGSolver solver;
-        solver.SetRelTol(rel_tol_);
-        solver.SetAbsTol(abs_tol_);
-        solver.SetMaxIter(max_iter_);
-        solver.SetPrintLevel(print_level_);
-        solver.SetPreconditioner(preconditioner);
-        solver.SetOperator(*sparse_matrix);
-        solver.Mult(b, x);
-        if (!solver.GetConverged())
-        {
-            throw std::runtime_error("PCG failed to converge on serial SparseMatrix.");
-        }
-        return;
-    }
-
 #if defined(MFEM_USE_MPI)
     auto *hypre_matrix = dynamic_cast<mfem::HypreParMatrix *>(&A);
-    if (hypre_matrix)
+    if (!hypre_matrix)
     {
-        mfem::HypreBoomerAMG amg;
-        amg.SetPrintLevel(0);
-
-        int par_print = (mfem::Mpi::WorldRank() == 0) ? print_level_ : 0;
-        mfem::CGSolver solver(hypre_matrix->GetComm());
-        solver.SetRelTol(rel_tol_);
-        solver.SetAbsTol(abs_tol_);
-        solver.SetMaxIter(max_iter_);
-        solver.SetPrintLevel(par_print);
-        solver.SetPreconditioner(amg);
-        solver.SetOperator(*hypre_matrix);
-        solver.Mult(b, x);
-
-        if (!solver.GetConverged())
-        {
-            throw std::runtime_error("Parallel PCG failed to converge.");
-        }
-        return;
+        throw std::runtime_error(
+            "MfemPcgSolver requires mfem::HypreParMatrix operator (MPI parallel only).");
     }
-#endif
 
-    throw std::runtime_error(
-        "MfemPcgSolver expects mfem::SparseMatrix (serial) or mfem::HypreParMatrix (parallel).");
+    auto amg = std::make_unique<mfem::HypreBoomerAMG>();
+    amg->SetPrintLevel(0);
+
+    int par_print = (mfem::Mpi::WorldRank() == 0) ? print_level_ : 0;
+    auto cg = std::make_unique<mfem::CGSolver>(hypre_matrix->GetComm());
+    cg->SetRelTol(rel_tol_);
+    cg->SetAbsTol(abs_tol_);
+    cg->SetMaxIter(max_iter_);
+    cg->SetPrintLevel(par_print);
+    cg->SetPreconditioner(*amg);
+    cg->SetOperator(*hypre_matrix);
+    cg->Mult(b, x);
+
+    if (!cg->GetConverged())
+    {
+        throw std::runtime_error("Parallel PCG failed to converge.");
+    }
+    preconditioner_ = std::move(amg);
+    solver_ = std::move(cg);
+#else
+    (void)A;
+    (void)b;
+    (void)x;
+    throw std::runtime_error("MfemPcgSolver requires MFEM built with MPI support.");
+#endif
+}
+
+void MfemPcgSolver::Mult(const mfem::Vector &b, mfem::Vector &x)
+{
+    if (!solver_)
+        throw std::runtime_error("MfemPcgSolver::Mult requires a prior Solve() call.");
+    solver_->Mult(b, x);
+    if (!solver_->GetConverged())
+    {
+        throw std::runtime_error("PCG failed to converge in Mult().");
+    }
 }
 }  // namespace fem::solver

@@ -8,10 +8,8 @@
 
 int main(int argc, char *argv[])
 {
-#ifdef MFEM_USE_MPI
     mfem::Mpi::Init(argc, argv);
     mfem::Hypre::Init();
-#endif
 
     const std::string config_path =
         (argc > 1) ? argv[1] : "configs/busbar_electro_thermal_iteration.json";

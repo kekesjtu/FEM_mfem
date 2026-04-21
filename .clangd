@@ -3,7 +3,7 @@
 
 CompileFlags:
   # 显式设置编译数据库路径
-  CompilationDatabase: build/linux-debug
+  CompilationDatabase: build/linux-release
   Add:
     - -std=c++17
     - -DMUPARSER_STATIC

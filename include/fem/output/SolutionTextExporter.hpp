@@ -28,4 +28,4 @@ class SolutionTextExporter
                                         const std::vector<mfem::Vector> &temperatures,
                                         const std::vector<mfem::Vector> &displacements);
 };
-}  // namespace fem::post
+}  // namespace fem::output

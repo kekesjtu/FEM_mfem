@@ -32,6 +32,12 @@ class Expression
 
     double Evaluate(const EvalContext &ctx) const;
 
+    /// Check if the expression depends on a given variable.
+    /// For constant expressions, always returns false.
+    /// For non-constant expressions, evaluates at two different values and checks if result
+    /// changes.
+    bool UsesVariable(const std::string &var_name) const;
+
   private:
     void InitializeParser();
 

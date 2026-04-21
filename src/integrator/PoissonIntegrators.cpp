@@ -28,13 +28,11 @@ double EvaluateCoefficient(mfem::Coefficient *coeff, mfem::ElementTransformation
 }
 }  // namespace
 
-CustomDiffusionIntegrator::CustomDiffusionIntegrator()
-    : mfem::DiffusionIntegrator(), coeff_(nullptr)
+CustomDiffusionIntegrator::CustomDiffusionIntegrator() : coeff_(nullptr)
 {
 }
 
-CustomDiffusionIntegrator::CustomDiffusionIntegrator(mfem::Coefficient &coeff)
-    : mfem::DiffusionIntegrator(coeff), coeff_(&coeff)
+CustomDiffusionIntegrator::CustomDiffusionIntegrator(mfem::Coefficient &coeff) : coeff_(&coeff)
 {
 }
 
@@ -48,9 +46,9 @@ void CustomDiffusionIntegrator::AssembleElementMatrix(const mfem::FiniteElement 
     elmat.SetSize(ndof, ndof);
     elmat = 0.0;
 
-    mfem::DenseMatrix dshape(ndof, dim);
-    mfem::DenseMatrix inv_jac(dim);
-    mfem::DenseMatrix grad_phys(ndof, dim);
+    dshape_buf_.SetSize(ndof, dim);
+    inv_jac_buf_.SetSize(dim);
+    grad_phys_buf_.SetSize(ndof, dim);
 
     const mfem::IntegrationRule &ir = ResolveIntegrationRule(el, trans, IntRule);
     for (int iq = 0; iq < ir.GetNPoints(); ++iq)
@@ -58,29 +56,34 @@ void CustomDiffusionIntegrator::AssembleElementMatrix(const mfem::FiniteElement 
         const mfem::IntegrationPoint &ip = ir.IntPoint(iq);
         trans.SetIntPoint(&ip);
 
-        el.CalcDShape(ip, dshape);
-        mfem::CalcInverse(trans.Jacobian(), inv_jac);
-        mfem::Mult(dshape, inv_jac, grad_phys);
+        el.CalcDShape(ip, dshape_buf_);
+        mfem::CalcInverse(trans.Jacobian(), inv_jac_buf_);
+        mfem::Mult(dshape_buf_, inv_jac_buf_, grad_phys_buf_);
 
         const double w = ip.weight * trans.Weight() * EvaluateCoefficient(coeff_, trans, ip);
 
+        // Exploit symmetry: compute upper triangle only
         for (int i = 0; i < ndof; ++i)
         {
-            for (int j = 0; j < ndof; ++j)
+            for (int j = i; j < ndof; ++j)
             {
                 double grad_dot = 0.0;
                 for (int d = 0; d < dim; ++d)
                 {
-                    grad_dot += grad_phys(i, d) * grad_phys(j, d);
+                    grad_dot += grad_phys_buf_(i, d) * grad_phys_buf_(j, d);
                 }
                 elmat(i, j) += w * grad_dot;
             }
         }
     }
+
+    // Mirror upper triangle to lower
+    for (int i = 0; i < ndof; ++i)
+        for (int j = 0; j < i; ++j)
+            elmat(i, j) = elmat(j, i);
 }
 
-CustomDomainLFIntegrator::CustomDomainLFIntegrator(mfem::Coefficient &coeff)
-    : mfem::DomainLFIntegrator(coeff), coeff_(&coeff)
+CustomDomainLFIntegrator::CustomDomainLFIntegrator(mfem::Coefficient &coeff) : coeff_(&coeff)
 {
 }
 
@@ -92,7 +95,7 @@ void CustomDomainLFIntegrator::AssembleRHSElementVect(const mfem::FiniteElement 
     elvect.SetSize(ndof);
     elvect = 0.0;
 
-    mfem::Vector shape(ndof);
+    shape_buf_.SetSize(ndof);
     const mfem::IntegrationRule &ir = ResolveIntegrationRule(el, trans, IntRule);
 
     for (int iq = 0; iq < ir.GetNPoints(); ++iq)
@@ -100,19 +103,19 @@ void CustomDomainLFIntegrator::AssembleRHSElementVect(const mfem::FiniteElement 
         const mfem::IntegrationPoint &ip = ir.IntPoint(iq);
         trans.SetIntPoint(&ip);
 
-        el.CalcShape(ip, shape);
+        el.CalcShape(ip, shape_buf_);
         const double rhs_val = EvaluateCoefficient(coeff_, trans, ip);
         const double w = ip.weight * trans.Weight();
 
         for (int i = 0; i < ndof; ++i)
         {
-            elvect(i) += w * rhs_val * shape(i);
+            elvect(i) += w * rhs_val * shape_buf_(i);
         }
     }
 }
 
 CustomBoundaryMassIntegrator::CustomBoundaryMassIntegrator(mfem::Coefficient &coeff)
-    : mfem::MassIntegrator(coeff), coeff_(&coeff)
+    : coeff_(&coeff)
 {
 }
 
@@ -124,7 +127,7 @@ void CustomBoundaryMassIntegrator::AssembleElementMatrix(const mfem::FiniteEleme
     elmat.SetSize(ndof, ndof);
     elmat = 0.0;
 
-    mfem::Vector shape(ndof);
+    shape_buf_.SetSize(ndof);
     const mfem::IntegrationRule &ir = ResolveIntegrationRule(el, trans, IntRule);
 
     for (int iq = 0; iq < ir.GetNPoints(); ++iq)
@@ -132,21 +135,26 @@ void CustomBoundaryMassIntegrator::AssembleElementMatrix(const mfem::FiniteEleme
         const mfem::IntegrationPoint &ip = ir.IntPoint(iq);
         trans.SetIntPoint(&ip);
 
-        el.CalcShape(ip, shape);
+        el.CalcShape(ip, shape_buf_);
         const double w = ip.weight * trans.Weight() * EvaluateCoefficient(coeff_, trans, ip);
 
+        // Exploit symmetry: compute upper triangle only
         for (int i = 0; i < ndof; ++i)
         {
-            for (int j = 0; j < ndof; ++j)
+            for (int j = i; j < ndof; ++j)
             {
-                elmat(i, j) += w * shape(i) * shape(j);
+                elmat(i, j) += w * shape_buf_(i) * shape_buf_(j);
             }
         }
     }
+
+    // Mirror upper triangle to lower
+    for (int i = 0; i < ndof; ++i)
+        for (int j = 0; j < i; ++j)
+            elmat(i, j) = elmat(j, i);
 }
 
-CustomBoundaryLFIntegrator::CustomBoundaryLFIntegrator(mfem::Coefficient &coeff)
-    : mfem::BoundaryLFIntegrator(coeff), coeff_(&coeff)
+CustomBoundaryLFIntegrator::CustomBoundaryLFIntegrator(mfem::Coefficient &coeff) : coeff_(&coeff)
 {
 }
 
@@ -158,7 +166,7 @@ void CustomBoundaryLFIntegrator::AssembleRHSElementVect(const mfem::FiniteElemen
     elvect.SetSize(ndof);
     elvect = 0.0;
 
-    mfem::Vector shape(ndof);
+    shape_buf_.SetSize(ndof);
     const mfem::IntegrationRule &ir = ResolveIntegrationRule(el, trans, IntRule);
 
     for (int iq = 0; iq < ir.GetNPoints(); ++iq)
@@ -166,14 +174,14 @@ void CustomBoundaryLFIntegrator::AssembleRHSElementVect(const mfem::FiniteElemen
         const mfem::IntegrationPoint &ip = ir.IntPoint(iq);
         trans.SetIntPoint(&ip);
 
-        el.CalcShape(ip, shape);
+        el.CalcShape(ip, shape_buf_);
         const double rhs_val = EvaluateCoefficient(coeff_, trans, ip);
         const double w = ip.weight * trans.Weight();
 
         for (int i = 0; i < ndof; ++i)
         {
-            elvect(i) += w * rhs_val * shape(i);
+            elvect(i) += w * rhs_val * shape_buf_(i);
         }
     }
 }
-}  // namespace fem::assembly
+}  // namespace fem::integrator

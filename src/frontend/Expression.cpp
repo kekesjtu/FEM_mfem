@@ -93,7 +93,7 @@ Expression &Expression::operator=(Expression &&other) noexcept
     T_ = other.T_;
     parser_ = std::move(other.parser_);
 
-    // 【修复修复】：同样需要重新绑定地址
+    // Rebind variable addresses to this object's members
     if (parser_)
     {
         parser_->DefineVar("x", &x_);
@@ -150,4 +150,35 @@ double Expression::Evaluate(const EvalContext &ctx) const
         throw std::runtime_error("muparser evaluation failed: " + e.GetMsg());
     }
 }
+
+bool Expression::UsesVariable(const std::string &var_name) const
+{
+    if (is_constant_)
+    {
+        return false;
+    }
+
+    // Evaluate the expression with two different values of the target variable.
+    // If results differ, the expression depends on that variable.
+    auto make_ctx = [&](double val) -> EvalContext
+    {
+        EvalContext ctx{1.0, 2.0, 3.0, 0.0, 293.15};  // base values
+        if (var_name == "x")
+            ctx.x = val;
+        else if (var_name == "y")
+            ctx.y = val;
+        else if (var_name == "z")
+            ctx.z = val;
+        else if (var_name == "t")
+            ctx.t = val;
+        else if (var_name == "T")
+            ctx.T = val;
+        return ctx;
+    };
+
+    double v1 = Evaluate(make_ctx(100.0));
+    double v2 = Evaluate(make_ctx(200.0));
+    return v1 != v2;
+}
+
 }  // namespace fem::frontend

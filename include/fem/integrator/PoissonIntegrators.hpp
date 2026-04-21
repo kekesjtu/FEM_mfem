@@ -5,8 +5,8 @@
 namespace fem::integrator
 {
 
-// 
-class CustomDiffusionIntegrator : public mfem::DiffusionIntegrator
+//
+class CustomDiffusionIntegrator : public mfem::BilinearFormIntegrator
 {
   public:
     CustomDiffusionIntegrator();
@@ -17,9 +17,10 @@ class CustomDiffusionIntegrator : public mfem::DiffusionIntegrator
 
   private:
     mfem::Coefficient *coeff_;
+    mutable mfem::DenseMatrix dshape_buf_, inv_jac_buf_, grad_phys_buf_;
 };
 
-class CustomDomainLFIntegrator : public mfem::DomainLFIntegrator
+class CustomDomainLFIntegrator : public mfem::LinearFormIntegrator
 {
   public:
     explicit CustomDomainLFIntegrator(mfem::Coefficient &coeff);
@@ -29,9 +30,10 @@ class CustomDomainLFIntegrator : public mfem::DomainLFIntegrator
 
   private:
     mfem::Coefficient *coeff_;
+    mutable mfem::Vector shape_buf_;
 };
 
-class CustomBoundaryMassIntegrator : public mfem::MassIntegrator
+class CustomBoundaryMassIntegrator : public mfem::BilinearFormIntegrator
 {
   public:
     explicit CustomBoundaryMassIntegrator(mfem::Coefficient &coeff);
@@ -41,9 +43,10 @@ class CustomBoundaryMassIntegrator : public mfem::MassIntegrator
 
   private:
     mfem::Coefficient *coeff_;
+    mutable mfem::Vector shape_buf_;
 };
 
-class CustomBoundaryLFIntegrator : public mfem::BoundaryLFIntegrator
+class CustomBoundaryLFIntegrator : public mfem::LinearFormIntegrator
 {
   public:
     explicit CustomBoundaryLFIntegrator(mfem::Coefficient &coeff);
@@ -53,5 +56,6 @@ class CustomBoundaryLFIntegrator : public mfem::BoundaryLFIntegrator
 
   private:
     mfem::Coefficient *coeff_;
+    mutable mfem::Vector shape_buf_;
 };
-}  // namespace fem::assembly
+}  // namespace fem::integrator

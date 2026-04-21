@@ -8,8 +8,10 @@
     "solver_mechanical": "mumps",
     "output_dir": "results/busbar_transient",
     "log_level": "info",
+    "comsol_reference_path": "results/busbar_transient.txt",
+    "compare_args": "--transient --fields-per-step 3 --field-names V,T,disp",
     "picard_max_iterations": 25,
-    "picard_tolerance": 1.0e-6,
+    "picard_tolerance": 1.0e-10,
     "picard_relaxation": 1.0,
     "transient_t_start": 0,
     "transient_t_end": 100,
@@ -17,10 +19,13 @@
     "transient_enabled": true,
     "transient_output_interval": 10.0,
     "adaptive_dt": true,
-    "adaptive_reltol": 1.0e-3,
-    "adaptive_abstol": 1.0e-6,
-    "dt_min": 1.0e-3,
-    "dt_max": 20.0
+    "adaptive_reltol": 0.001,
+    "adaptive_abstol": 0.1,
+    "dt_min": 0.1,
+    "dt_max": 10.0,
+    "eta_max": 2,
+    "eta_min": 0.2,
+    "eta_safety": 0.9
   },
   "materials": [
     {

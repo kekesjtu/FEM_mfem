@@ -22,6 +22,7 @@ void ParaviewExporter::Save(const std::string &collection_name, const std::strin
     collection.SetTime(time);
     collection.RegisterField(field_name, &field);
     collection.SetHighOrderOutput(true);
+    collection.SetDataFormat(mfem::VTKFormat::BINARY);
     collection.Save();
 }
 
@@ -48,6 +49,7 @@ void ParaviewExporter::SaveTransient(const std::string &collection_name,
     collection.SetPrefixPath(output_dir_);
     collection.SetLevelsOfDetail(1);
     collection.SetHighOrderOutput(true);
+    collection.SetDataFormat(mfem::VTKFormat::BINARY);
     collection.RegisterField(field_name, &gf);
 
     for (size_t i = 0; i < snapshots.size(); ++i)
