@@ -71,8 +71,8 @@ void TransientSolver::SolveTransient()
     mfem::Vector T_nm2_true(N_true);  // T^{n-2}
     T_nm1_true = 0.0;
     T_nm2_true = 0.0;
-    double dt_prev = 0.0;
-    double dt_prev2 = 0.0;
+    double dt_prev = 0.0; //T^{n} - T^{n-1} time step size
+    double dt_prev2 = 0.0; //T^{n-1} - T^{n-2} time step size
     int history_depth = 0;  // 0=cold start, 1=linear pred, 2+=quad pred+BDF2
 
     // ================================================================
@@ -219,8 +219,8 @@ void TransientSolver::SolveTransient()
                     auto err2 = ComputeAdaptiveError(
                         T_np1_pred2_true, T_np1_bdf2_true, dt, sim.adaptive_reltol,
                         sim.adaptive_abstol, sim.eta_safety, sim.eta_max, sim.eta_min, dt_min, 2);
-                    double wrms_2 = err2.wrms;
-                    double dt_new_2 = err2.dt_new;
+                    wrms_2 = err2.wrms;
+                    dt_new_2 = err2.dt_new;
                 }
 
                 // --- Adaptive order selection: pick order giving largest acceptable dt ---
@@ -272,12 +272,11 @@ void TransientSolver::SolveTransient()
                 // Apply the chosen order's solution.
                 // BDF1 solution is chosen by default in function SolveBDF1,
                 // don't need to copy if accepted_order==1
-                
+
                 // if (accepted_order == 1)
                 // t_solver->GetTemperature() = t_solver->GetBDF1Solution();
                 if (accepted_order == 2)
                     t_solver->GetTemperature() = t_solver->GetBDF2Solution();
-            
             }
         }
 

@@ -8,7 +8,9 @@ CompileFlags:
     - -std=c++17
     - -DMUPARSER_STATIC
     - -Wno-vla-extension
-    - -fopenmp=libgomp  # 显式告知 clangd 使用 libgomp (GCC 的 OpenMP)
+    - -fopenmp=libgomp # 显式告知 clangd 使用 libgomp (GCC 的 OpenMP)
+    - -isystem
+    - /usr/lib/gcc/x86_64-linux-gnu/13/include
   Remove:
     # 移除 clang 不支持的 GCC 特定选项
     - -fdiagnostics-color=always

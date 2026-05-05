@@ -65,6 +65,49 @@ void RunComsolComparison(const frontend::SimulationConfig &sim)
     if (ret != 0)
         logger->warn("Comparison script returned non-zero exit code: {}", ret);
 }
+
+void RunComsolCurveComparison(const frontend::SimulationConfig &sim)
+{
+    if (sim.curve_reference_path.empty())
+        return;
+
+    int rank = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    if (rank != 0)
+        return;
+
+    auto logger = fem::log::Get();
+
+    if (!sim.transient_enabled)
+    {
+        logger->warn("Curve comparison skipped: transient_enabled is false.");
+        return;
+    }
+
+    const std::string mine_file = sim.output_dir + "/transient.txt";
+    if (!std::filesystem::exists(mine_file))
+    {
+        logger->warn("Curve comparison skipped: output file not found: {}", mine_file);
+        return;
+    }
+    if (!std::filesystem::exists(sim.curve_reference_path))
+    {
+        logger->warn("Curve comparison skipped: COMSOL reference not found: {}",
+                     sim.curve_reference_path);
+        return;
+    }
+
+    std::string cmd = "python3 tools/compare_time_curves.py --mine \"" + mine_file +
+                      "\" --comsol \"" + sim.curve_reference_path + "\"";
+    if (!sim.curve_compare_args.empty())
+        cmd += " " + sim.curve_compare_args;
+
+    logger->info("=== Running COMSOL time-curve comparison ===");
+    logger->info("Command: {}", cmd);
+    int ret = std::system(cmd.c_str());
+    if (ret != 0)
+        logger->warn("Curve comparison script returned non-zero exit code: {}", ret);
+}
 }  // namespace
 
 int Application::Run(const std::string &config_path)
@@ -88,6 +131,7 @@ int Application::Run(const std::string &config_path)
     }
 
     RunComsolComparison(config.simulation);
+    RunComsolCurveComparison(config.simulation);
 
     logger->info("All done.");
     return 0;

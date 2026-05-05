@@ -103,8 +103,6 @@ $$(K + \alpha_C \, C) \, T^{n+1} = F + C \, (\beta_n \, T^n - \beta_{n-1} \, T^{
 
 局部截断误差为 $O(\Delta t^3)$。
 
-> **实现注意**：BDF2 的求解复用 BE 步中已组装的右端载荷 $F$（`F_current_`），因此 `SolveBDF2()` 必须在同一步的 `SolveBE()` 之后调用。系统矩阵 $(K + \alpha_C C)$ 按 `alpha_c` 值缓存，避免重复组装。
-
 ---
 
 ## 5. WRMS 误差范数

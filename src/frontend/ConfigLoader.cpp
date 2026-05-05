@@ -94,6 +94,8 @@ void ConfigLoader::LoadSimulation(const json &root)
     s.eta_min = ReadOrDefault(sim, "eta_min", 0.2);
     s.comsol_reference_path = ReadOrDefault<std::string>(sim, "comsol_reference_path", "");
     s.compare_args = ReadOrDefault<std::string>(sim, "compare_args", "");
+    s.curve_reference_path = ReadOrDefault<std::string>(sim, "curve_reference_path", "");
+    s.curve_compare_args = ReadOrDefault<std::string>(sim, "curve_compare_args", "");
 
     // --- Adaptive parameter validation ---
     if (s.transient_enabled)

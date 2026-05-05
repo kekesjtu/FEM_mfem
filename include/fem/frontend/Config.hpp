@@ -39,6 +39,8 @@ struct SimulationConfig
     double eta_min = 0.2;
     std::string comsol_reference_path;
     std::string compare_args;
+    std::string curve_reference_path;
+    std::string curve_compare_args;
 
     /// Return the effective solver name for a given field type.
     const std::string &GetSolver(const std::string &field_type) const
