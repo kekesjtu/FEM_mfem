@@ -1,6 +1,6 @@
-#include "fem/coeff/ThermalCoeffs.hpp"
+#include "coeff/ThermalCoeffs.hpp"
 
-#include "fem/frontend/Config.hpp"
+#include "frontend/Config.hpp"
 
 #include <string>
 
@@ -26,17 +26,17 @@ void ThermalCoeffs::BuildCoeffs(frontend::ProjectConfig &config,
     if (!base_source_)
     {
         const auto &field_config = config.thermal_field;
-        if (!field_config.domain_to_source.empty())
+        if (!field_config.attr_to_source.empty())
         {
             int max_attr = config.fe.GetMesh().attributes.Max();
             auto pw = std::make_unique<mfem::PWConstCoefficient>(max_attr);
             double default_source = std::stod(field_config.source_default);
-            for (int a = 1; a <= max_attr; ++a)
+            for (int attr = 1; attr <= max_attr; ++attr)
             {
-                auto it = field_config.domain_to_source.find(a);
-                pw->operator()(a) = (it != field_config.domain_to_source.end())
-                                        ? std::stod(it->second)
-                                        : default_source;
+                auto it = field_config.attr_to_source.find(attr);
+                pw->operator()(attr) =
+                    (it != field_config.attr_to_source.end()) ? std::stod(it->second)
+                                                                : default_source;
             }
             base_source_ = std::move(pw);
         }

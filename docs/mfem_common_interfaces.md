@@ -26,7 +26,7 @@ Mesh
 | 形式 | `BilinearForm`, `LinearForm` | 表达弱形式左端和右端。 |
 | 积分子 | `DiffusionIntegrator`, `DomainLFIntegrator` 等 | 将具体弱形式项加入形式对象。 |
 | 矩阵向量 | `SparseMatrix`, `Vector`, `Operator` | 线性代数基础对象。 |
-| 求解器 | `CGSolver`, `GMRESSolver`, `MINRESSolver`, `DSmoother`, `GSSmoother` | 线性系统求解与预条件。 |
+| 求解器 | `CGSolver`, `MINRESSolver`, `DSmoother`, `GSSmoother` | 线性系统求解与预条件。 |
 | 输出 | `GridFunction::Save`, `VisItDataCollection`, `ParaViewDataCollection` | 保存结果。 |
 
 ## 2. Mesh
@@ -63,7 +63,9 @@ mfem::Mesh mesh("mesh.msh", 1, 1);
 | `attributes` | 体单元属性集合，通常用于分域材料。 |
 | `bdr_attributes` | 边界属性集合，通常用于边界条件。 |
 
-属性编号通常从 `1` 开始；构造 marker 数组时要转换为 `attr - 1` 的下标。
+MFEM API 名称中使用 `attributes` / `bdr_attributes`。本项目配置和代码层沿用 `attr` 表示体单元属性编号，沿用 `bdr_attributes` 表示边界属性编号，避免把体属性、节点编号和边界属性混在一起。
+
+编号通常从 `1` 开始；构造边界 marker 数组时要转换为 `bdr_attr - 1` 的下标。
 
 ## 3. 有限元集合
 
@@ -169,6 +171,8 @@ mfem::FunctionCoefficient src([](const mfem::Vector &x) { return 1.0; });
 
 自定义系数通常继承 `Coefficient` 或 `VectorCoefficient` 并重写 `Eval()`。
 
+线程化时，`Eval()` 不能写共享成员。若系数需要临时坐标、梯度或表达式变量槽，应放在线程私有 runtime/cache 中；网格属性映射、表达式字符串和外场指针可以只读共享。
+
 ## 7. BilinearForm
 
 `BilinearForm` 表示弱形式左端。
@@ -219,6 +223,10 @@ mfem::FunctionCoefficient src([](const mfem::Vector &x) { return 1.0; });
 | `VectorDomainLFIntegrator(f)` | 矢量体力。 |
 | `VectorBoundaryLFIntegrator(g)` | 矢量边界力。 |
 
+自定义积分子若要进入 rank 内线程装配，必须避免共享可变 scratch。推荐方式是每个 worker 线程持有一份 integrator 实例，或者把 `DenseMatrix`、`Vector` 等临时缓冲放入线程私有 assembly context。不要让多个线程同时写同一个 `SparseMatrix` 或同一个 `ParBilinearForm` 的内部装配容器。
+
+还要注意 MFEM 自身的构建选项。若多个线程会同时调用同一个有限元集合中的 `FiniteElement::CalcShape()` / `CalcDShape()`，MFEM 必须以 `MFEM_THREAD_SAFE=ON` 构建；若线程中可能触发全局积分规则缓存，建议同时启用 `MFEM_USE_OPENMP=ON`。本项目的 OpenMP 装配执行器会检查这些宏，缺失时自动不启用。
+
 ## 9. 矩阵、向量和 Operator
 
 ### 9.1 Vector
@@ -263,7 +271,6 @@ mfem::FunctionCoefficient src([](const mfem::Vector &x) { return 1.0; });
 | 类型 | 适用场景 |
 | ---- | -------- |
 | `CGSolver` | 对称正定系统。 |
-| `GMRESSolver` | 一般非对称系统。 |
 | `MINRESSolver` | 对称不定系统。 |
 | `BiCGSTABSolver` | 一般非对称系统。 |
 
@@ -350,6 +357,8 @@ device.Print();
 
 常见后端字符串包括 `cpu`、`cuda`、`hip`、`omp` 等，具体可用性取决于 MFEM 构建选项。
 
+`Device("omp")` 表示 MFEM 的设备 kernel 可使用 OpenMP 后端，但它不等于所有 legacy `BilinearForm::Assemble()` 自动安全并行。自定义 coefficient、integrator 和项目自己的局部装配执行器仍需要满足线程安全要求。
+
 ### 13.2 AssemblyLevel
 
 | 枚举 | 说明 |
@@ -361,6 +370,12 @@ device.Print();
 | `AssemblyLevel::NONE` | 矩阵自由路径。 |
 
 本项目当前主路径是显式矩阵装配，没有把 Partial Assembly 作为默认架构。
+
+线程并行粒度取决于装配等级：
+
+- legacy/full assembly 通常以本地单元或边界单元为外层并行粒度，每个线程计算自己负责单元的高斯积分和单元矩阵/向量。
+- partial assembly 不显式形成全局矩阵，更多并行发生在 restriction、basis evaluation、quadrature-point kernel 和局部算子 action 上。
+- 本项目第一阶段保持显式矩阵路径，当前并行本 rank 的域单元局部装配，边界单元装配和 MFEM form 写入由主线程完成。
 
 ## 14. 调试与检查
 

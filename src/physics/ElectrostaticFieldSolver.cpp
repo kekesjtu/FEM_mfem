@@ -1,8 +1,8 @@
-#include "fem/physics/ElectrostaticFieldSolver.hpp"
+#include "physics/ElectrostaticFieldSolver.hpp"
 
-#include "fem/assembler/ElectrostaticAssembler.hpp"
-#include "fem/log/Logger.hpp"
-#include "fem/solver/LinearSolverFactory.hpp"
+#include "assembler/ElectrostaticAssembler.hpp"
+#include "log/Logger.hpp"
+#include "solver/LinearSolverFactory.hpp"
 
 #include <stdexcept>
 

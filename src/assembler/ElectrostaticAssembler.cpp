@@ -1,7 +1,8 @@
-#include "fem/assembler/ElectrostaticAssembler.hpp"
+#include "assembler/ElectrostaticAssembler.hpp"
 
-#include "fem/coeff/ElectrostaticCoeffs.hpp"
-#include "fem/integrator/PoissonIntegrators.hpp"
+#include "coeff/ElectrostaticCoeffs.hpp"
+#include "assembler/LocalAssemblyExecutor.hpp"
+#include "integrator/PoissonIntegrators.hpp"
 
 #include <stdexcept>
 
@@ -22,25 +23,48 @@ AssembledSystem ElectrostaticAssembler::Assemble(mfem::ParFiniteElementSpace &sp
 
     AssembledSystem system;
 
-    system.linear = std::make_unique<mfem::ParLinearForm>(&space);
-    system.linear->AddDomainIntegrator(
-        new integrator::CustomDomainLFIntegrator(coeffs.GetSource()));
-    for (size_t i = 0; i < bc.robin_markers.size(); ++i)
-    {
-        system.linear->AddBoundaryIntegrator(
-            new integrator::CustomBoundaryLFIntegrator(bc.robin_q_coeffs[i]), bc.robin_markers[i]);
-    }
-    system.linear->Assemble();
+    std::vector<LinearIntegratorFactory> domain_lf;
+    domain_lf.push_back([&coeffs]()
+                        {
+                            return std::make_unique<integrator::CustomDomainLFIntegrator>(
+                                coeffs.GetSource());
+                        });
 
-    system.bilinear = std::make_unique<mfem::ParBilinearForm>(&space);
-    system.bilinear->AddDomainIntegrator(new integrator::CustomDiffusionIntegrator(*sigma));
+    std::vector<BoundaryLinearIntegratorSpec> boundary_lf;
     for (size_t i = 0; i < bc.robin_markers.size(); ++i)
     {
-        system.bilinear->AddBoundaryIntegrator(
-            new integrator::CustomBoundaryMassIntegrator(bc.robin_l_coeffs[i]),
-            bc.robin_markers[i]);
+        auto *coeff = &bc.robin_q_coeffs[i];
+        auto *marker = &bc.robin_markers[i];
+        boundary_lf.push_back(
+            {marker,
+             [coeff]()
+             {
+                 return std::make_unique<integrator::CustomBoundaryLFIntegrator>(*coeff);
+             }});
     }
-    system.bilinear->Assemble();
+    system.linear = AssembleLinearFormOpenMP(space, domain_lf, boundary_lf);
+
+    std::vector<BilinearIntegratorFactory> domain_bf;
+    domain_bf.push_back([sigma]()
+                        {
+                            return std::make_unique<integrator::CustomDiffusionIntegrator>(
+                                *sigma);
+                        });
+
+    std::vector<BoundaryBilinearIntegratorSpec> boundary_bf;
+    for (size_t i = 0; i < bc.robin_markers.size(); ++i)
+    {
+        auto *coeff = &bc.robin_l_coeffs[i];
+        auto *marker = &bc.robin_markers[i];
+        boundary_bf.push_back(
+            {marker,
+             [coeff]()
+             {
+                 return std::make_unique<integrator::CustomBoundaryMassIntegrator>(*coeff);
+             }});
+    }
+    system.bilinear = AssembleBilinearFormOpenMP(space, domain_bf, boundary_bf);
+    system.bilinear->Finalize();
 
     space.GetEssentialTrueDofs(bc.essential_bdr, system.essential_tdofs);
     voltage = 0.0;

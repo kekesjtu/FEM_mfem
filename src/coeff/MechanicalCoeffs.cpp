@@ -1,7 +1,7 @@
-#include "fem/coeff/MechanicalCoeffs.hpp"
+#include "coeff/MechanicalCoeffs.hpp"
 
-#include "fem/coeff/CoefficientManager.hpp"
-#include "fem/frontend/Config.hpp"
+#include "coeff/CoefficientManager.hpp"
+#include "frontend/Config.hpp"
 
 #include <stdexcept>
 
@@ -23,7 +23,7 @@ void MechanicalCoeffs::BuildCoeffs(frontend::ProjectConfig &config)
     const auto &field_config = config.mechanical_field;
     const int dim = mesh.Dimension();
 
-    if (!field_config.domain_to_body_force.empty())
+    if (!field_config.attr_to_body_force.empty())
     {
         int max_attr = mesh.attributes.Max();
         auto pw_vec = std::make_unique<mfem::VectorArrayCoefficient>(dim);
@@ -33,14 +33,15 @@ void MechanicalCoeffs::BuildCoeffs(frontend::ProjectConfig &config)
             double default_val = (d < static_cast<int>(field_config.body_force_default.size()))
                                      ? field_config.body_force_default[d]
                                      : 0.0;
-            for (int a = 0; a < max_attr; ++a)
+            for (int attr_offset = 0; attr_offset < max_attr; ++attr_offset)
             {
-                auto it = field_config.domain_to_body_force.find(a + 1);
-                if (it != field_config.domain_to_body_force.end() &&
+                const int attr = attr_offset + 1;
+                auto it = field_config.attr_to_body_force.find(attr);
+                if (it != field_config.attr_to_body_force.end() &&
                     d < static_cast<int>(it->second.size()))
-                    comp_vals(a) = it->second[d];
+                    comp_vals(attr_offset) = it->second[d];
                 else
-                    comp_vals(a) = default_val;
+                    comp_vals(attr_offset) = default_val;
             }
             pw_vec->Set(d, new mfem::PWConstCoefficient(comp_vals));
         }

@@ -1,7 +1,7 @@
-#include "fem/output/ResultExporter.hpp"
+#include "output/ResultExporter.hpp"
 
-#include "fem/output/ParaviewExporter.hpp"
-#include "fem/output/SolutionTextExporter.hpp"
+#include "output/ParaviewExporter.hpp"
+#include "output/SolutionTextExporter.hpp"
 
 #include <mpi.h>
 #include <filesystem>

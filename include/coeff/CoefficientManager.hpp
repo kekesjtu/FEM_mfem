@@ -1,0 +1,101 @@
+// CoefficientManager: bridges Config material data to MFEM Coefficient objects.
+// Supports piecewise-constant and piecewise-expression (temperature-dependent) coefficients.
+#pragma once
+
+#include "frontend/Config.hpp"
+#include "frontend/Expression.hpp"
+#include "mfem.hpp"
+
+#include <cstddef>
+#include <string>
+#include <vector>
+
+namespace fem::coeff
+{
+
+/// GridFunctionCoefficient that evaluates a material expression at integration points,
+/// optionally depending on a temperature GridFunction for coupled problems.
+class ExpressionCoefficient : public mfem::Coefficient
+{
+  public:
+    /// Build a piecewise expression coefficient from material database.
+    /// @param property_name  e.g. "electrical_conductivity", "diffusion"
+    /// @param db             material database with attr_to_material and attr_to_properties maps
+    /// @param mesh           the mesh (to get attribute ids)
+    /// @param temperature_gf optional late-bound temperature field handle for T-dependent
+    /// expressions
+    ExpressionCoefficient(const std::string &property_name, const frontend::MaterialDatabase &db,
+                          mfem::Mesh &mesh, mfem::GridFunction * const *temperature_gf = nullptr);
+
+    double Eval(mfem::ElementTransformation &T, const mfem::IntegrationPoint &ip) override;
+
+    /// Set the reference temperature (K) used when no temperature GridFunction is available.
+    void SetReferenceTemperature(double T_ref)
+    {
+        reference_temperature_ = T_ref;
+    }
+
+  private:
+    struct AttributeExpression
+    {
+        frontend::Expression expr;
+        bool is_constant;
+        double constant_value;
+    };
+
+    // attribute id -> expression (1-based indexing, slot 0 unused)
+    std::vector<AttributeExpression> attr_to_expr_;
+    mfem::GridFunction * const *temperature_gf_;
+    mfem::Mesh &mesh_;
+    double reference_temperature_ = 293.15;
+    std::size_t runtime_cache_id_;
+};
+
+/// Simple piecewise constant coefficient built from material property.
+/// Faster path when no expression depends on T/x/y/z.
+class PiecewiseConstantCoefficient : public mfem::Coefficient
+{
+  public:
+    PiecewiseConstantCoefficient(const std::string &property_name,
+                                 const frontend::MaterialDatabase &db, mfem::Mesh &mesh);
+
+    double Eval(mfem::ElementTransformation &T, const mfem::IntegrationPoint &ip) override;
+
+  private:
+    std::vector<double> attr_to_value_;  // 1-based
+};
+
+/// Joule heating source: Q = sigma * |grad(V)|^2, computed at integration points.
+class JouleHeatingCoefficient : public mfem::Coefficient
+{
+  public:
+    JouleHeatingCoefficient(mfem::Coefficient * const *sigma = nullptr,
+                            mfem::GridFunction * const *voltage = nullptr);
+
+    double Eval(mfem::ElementTransformation &T, const mfem::IntegrationPoint &ip) override;
+
+  private:
+    mfem::Coefficient * const *sigma_ = nullptr;
+    mfem::GridFunction * const *voltage_ = nullptr;
+};
+
+class CombinedHeatSourceCoefficient : public mfem::Coefficient
+{
+  public:
+    CombinedHeatSourceCoefficient(mfem::Coefficient *base_source,
+                                  JouleHeatingCoefficient *joule_source)
+        : base_source_(base_source), joule_source_(joule_source)
+    {
+    }
+
+    double Eval(mfem::ElementTransformation &T, const mfem::IntegrationPoint &ip) override;
+
+  private:
+    mfem::Coefficient *base_source_ = nullptr;
+    JouleHeatingCoefficient *joule_source_ = nullptr;
+};
+
+/// Utility: check if a material property is purely constant across all attributes.
+bool IsPropertyConstant(const std::string &property_name, const frontend::MaterialDatabase &db);
+
+}  // namespace fem::coeff

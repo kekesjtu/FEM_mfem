@@ -1,4 +1,4 @@
-#include "fem/frontend/Expression.hpp"
+#include "frontend/Expression.hpp"
 
 #include "muParser.h"
 
@@ -8,147 +8,32 @@
 
 namespace fem::frontend
 {
-Expression::Expression(std::string expression) : expression_(std::move(expression))
+namespace
+{
+bool TryParseConstant(const std::string &expression, double &value)
 {
     try
     {
         size_t processed = 0;
-        constant_value_ = std::stod(expression_, &processed);
-        is_constant_ = (processed == expression_.size());
+        value = std::stod(expression, &processed);
+        return processed == expression.size();
     }
     catch (const std::exception &)
     {
-        is_constant_ = false;
-    }
-
-    if (!is_constant_)
-    {
-        InitializeParser();
+        return false;
     }
 }
+}  // namespace
 
-Expression::Expression(const Expression &other)
-    : expression_(other.expression_),
-      is_constant_(other.is_constant_),
-      constant_value_(other.constant_value_)
+Expression::Expression(std::string expression) : expression_(std::move(expression))
 {
-    if (!is_constant_)
-    {
-        InitializeParser();
-    }
-}
-
-Expression &Expression::operator=(const Expression &other)
-{
-    if (this == &other)
-    {
-        return *this;
-    }
-
-    expression_ = other.expression_;
-    is_constant_ = other.is_constant_;
-    constant_value_ = other.constant_value_;
-    parser_.reset();
-    if (!is_constant_)
-    {
-        InitializeParser();
-    }
-
-    return *this;
-}
-
-Expression::Expression(Expression &&other) noexcept
-    : expression_(std::move(other.expression_)),
-      is_constant_(other.is_constant_),
-      constant_value_(other.constant_value_),
-      x_(other.x_),
-      y_(other.y_),
-      z_(other.z_),
-      t_(other.t_),
-      T_(other.T_),
-      parser_(std::move(other.parser_))
-{
-    if (parser_)
-    {
-        parser_->DefineVar("x", &x_);
-        parser_->DefineVar("y", &y_);
-        parser_->DefineVar("z", &z_);
-        parser_->DefineVar("t", &t_);
-        parser_->DefineVar("T", &T_);
-    }
-}
-
-Expression &Expression::operator=(Expression &&other) noexcept
-{
-    if (this == &other)
-        return *this;
-
-    expression_ = std::move(other.expression_);
-    is_constant_ = other.is_constant_;
-    constant_value_ = other.constant_value_;
-    x_ = other.x_;
-    y_ = other.y_;
-    z_ = other.z_;
-    t_ = other.t_;
-    T_ = other.T_;
-    parser_ = std::move(other.parser_);
-
-    // Rebind variable addresses to this object's members
-    if (parser_)
-    {
-        parser_->DefineVar("x", &x_);
-        parser_->DefineVar("y", &y_);
-        parser_->DefineVar("z", &z_);
-        parser_->DefineVar("t", &t_);
-        parser_->DefineVar("T", &T_);
-    }
-
-    return *this;
-}
-
-Expression::~Expression() = default;
-
-void Expression::InitializeParser()
-{
-    parser_ = std::make_unique<mu::Parser>();
-    parser_->DefineVar("x", &x_);
-    parser_->DefineVar("y", &y_);
-    parser_->DefineVar("z", &z_);
-    parser_->DefineVar("t", &t_);
-    parser_->DefineVar("T", &T_);
-    parser_->DefineConst("pi", M_PI);
-
-    try
-    {
-        parser_->SetExpr(expression_);
-    }
-    catch (const mu::Parser::exception_type &e)
-    {
-        throw std::runtime_error("muparser expression parse failed: " + e.GetMsg());
-    }
+    is_constant_ = TryParseConstant(expression_, constant_value_);
 }
 
 double Expression::Evaluate(const EvalContext &ctx) const
 {
-    if (is_constant_)
-    {
-        return constant_value_;
-    }
-
-    x_ = ctx.x;
-    y_ = ctx.y;
-    z_ = ctx.z;
-    t_ = ctx.t;
-    T_ = ctx.T;
-
-    try
-    {
-        return parser_->Eval();
-    }
-    catch (const mu::Parser::exception_type &e)
-    {
-        throw std::runtime_error("muparser evaluation failed: " + e.GetMsg());
-    }
+    ExpressionRuntime runtime(*this);
+    return runtime.Evaluate(ctx);
 }
 
 bool Expression::UsesVariable(const std::string &var_name) const
@@ -158,11 +43,9 @@ bool Expression::UsesVariable(const std::string &var_name) const
         return false;
     }
 
-    // Evaluate the expression with two different values of the target variable.
-    // If results differ, the expression depends on that variable.
     auto make_ctx = [&](double val) -> EvalContext
     {
-        EvalContext ctx{1.0, 2.0, 3.0, 0.0, 293.15};  // base values
+        EvalContext ctx{1.0, 2.0, 3.0, 0.0, 293.15};
         if (var_name == "x")
             ctx.x = val;
         else if (var_name == "y")
@@ -176,9 +59,98 @@ bool Expression::UsesVariable(const std::string &var_name) const
         return ctx;
     };
 
-    double v1 = Evaluate(make_ctx(100.0));
-    double v2 = Evaluate(make_ctx(200.0));
+    ExpressionRuntime runtime(*this);
+    const double v1 = runtime.Evaluate(make_ctx(100.0));
+    const double v2 = runtime.Evaluate(make_ctx(200.0));
     return v1 != v2;
+}
+
+ExpressionRuntime::ExpressionRuntime(const Expression &expression)
+    : expression_(expression.GetExpressionString()),
+      is_constant_(expression.IsConstant()),
+      constant_value_(expression.ConstantValue())
+{
+    if (!is_constant_)
+    {
+        InitializeParser();
+    }
+}
+
+ExpressionRuntime::ExpressionRuntime(ExpressionRuntime &&other) noexcept
+    : expression_(std::move(other.expression_)),
+      is_constant_(other.is_constant_),
+      constant_value_(other.constant_value_),
+      eval_context_(other.eval_context_),
+      parser_(std::move(other.parser_))
+{
+    RebindVariables();
+}
+
+ExpressionRuntime &ExpressionRuntime::operator=(ExpressionRuntime &&other) noexcept
+{
+    if (this == &other)
+    {
+        return *this;
+    }
+
+    expression_ = std::move(other.expression_);
+    is_constant_ = other.is_constant_;
+    constant_value_ = other.constant_value_;
+    eval_context_ = other.eval_context_;
+    parser_ = std::move(other.parser_);
+    RebindVariables();
+    return *this;
+}
+
+ExpressionRuntime::~ExpressionRuntime() = default;
+
+void ExpressionRuntime::InitializeParser()
+{
+    parser_ = std::make_unique<mu::Parser>();
+    RebindVariables();
+    parser_->DefineConst("pi", M_PI);
+
+    try
+    {
+        parser_->SetExpr(expression_);
+    }
+    catch (const mu::Parser::exception_type &e)
+    {
+        throw std::runtime_error("muparser expression parse failed: " + e.GetMsg());
+    }
+}
+
+void ExpressionRuntime::RebindVariables()
+{
+    if (!parser_)
+    {
+        return;
+    }
+
+    parser_->DefineVar("x", &eval_context_.x);
+    parser_->DefineVar("y", &eval_context_.y);
+    parser_->DefineVar("z", &eval_context_.z);
+    parser_->DefineVar("t", &eval_context_.t);
+    parser_->DefineVar("T", &eval_context_.T);
+}
+
+double ExpressionRuntime::Evaluate(const EvalContext &ctx)
+{
+    if (is_constant_)
+    {
+        return constant_value_;
+    }
+
+    eval_context_ = ctx;
+
+    try
+    {
+        return parser_->Eval();
+    }
+    catch (const mu::Parser::exception_type &e)
+    {
+        throw std::runtime_error("muparser evaluation failed: " + e.GetMsg());
+    }
 }
 
 }  // namespace fem::frontend

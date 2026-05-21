@@ -1,4 +1,4 @@
-#include "fem/integrator/PoissonIntegrators.hpp"
+#include "integrator/PoissonIntegrators.hpp"
 
 namespace fem::integrator
 {
@@ -46,9 +46,17 @@ void CustomDiffusionIntegrator::AssembleElementMatrix(const mfem::FiniteElement 
     elmat.SetSize(ndof, ndof);
     elmat = 0.0;
 
-    dshape_buf_.SetSize(ndof, dim);
-    inv_jac_buf_.SetSize(dim);
-    grad_phys_buf_.SetSize(ndof, dim);
+    // 不加 thread_local，这三个矩阵就是普通的栈上局部变量，每次调用都会重新构造、析构。
+    // 加了thread_local 后：
+    // 这三个矩阵在每个线程中只构造一次，后续调用会重用它们，避免了频繁的构造和析构开销。
+    // 类似于线程内部的全局变量，在一个线程中缓存了这三个矩阵
+    // 与多线程安全无关。
+    thread_local mfem::DenseMatrix grad_phys_buf;
+    thread_local mfem::DenseMatrix dshape_buf;
+    thread_local mfem::DenseMatrix inv_jac_buf;
+    dshape_buf.SetSize(ndof, dim);
+    inv_jac_buf.SetSize(dim);
+    grad_phys_buf.SetSize(ndof, dim);
 
     const mfem::IntegrationRule &ir = ResolveIntegrationRule(el, trans, IntRule);
     for (int iq = 0; iq < ir.GetNPoints(); ++iq)
@@ -56,9 +64,9 @@ void CustomDiffusionIntegrator::AssembleElementMatrix(const mfem::FiniteElement 
         const mfem::IntegrationPoint &ip = ir.IntPoint(iq);
         trans.SetIntPoint(&ip);
 
-        el.CalcDShape(ip, dshape_buf_);
-        mfem::CalcInverse(trans.Jacobian(), inv_jac_buf_);
-        mfem::Mult(dshape_buf_, inv_jac_buf_, grad_phys_buf_);
+        el.CalcDShape(ip, dshape_buf);
+        mfem::CalcInverse(trans.Jacobian(), inv_jac_buf);
+        mfem::Mult(dshape_buf, inv_jac_buf, grad_phys_buf);
 
         const double w = ip.weight * trans.Weight() * EvaluateCoefficient(coeff_, trans, ip);
 
@@ -70,7 +78,7 @@ void CustomDiffusionIntegrator::AssembleElementMatrix(const mfem::FiniteElement 
                 double grad_dot = 0.0;
                 for (int d = 0; d < dim; ++d)
                 {
-                    grad_dot += grad_phys_buf_(i, d) * grad_phys_buf_(j, d);
+                    grad_dot += grad_phys_buf(i, d) * grad_phys_buf(j, d);
                 }
                 elmat(i, j) += w * grad_dot;
             }
@@ -95,7 +103,8 @@ void CustomDomainLFIntegrator::AssembleRHSElementVect(const mfem::FiniteElement 
     elvect.SetSize(ndof);
     elvect = 0.0;
 
-    shape_buf_.SetSize(ndof);
+    thread_local mfem::Vector shape_buf;
+    shape_buf.SetSize(ndof);
     const mfem::IntegrationRule &ir = ResolveIntegrationRule(el, trans, IntRule);
 
     for (int iq = 0; iq < ir.GetNPoints(); ++iq)
@@ -103,13 +112,13 @@ void CustomDomainLFIntegrator::AssembleRHSElementVect(const mfem::FiniteElement 
         const mfem::IntegrationPoint &ip = ir.IntPoint(iq);
         trans.SetIntPoint(&ip);
 
-        el.CalcShape(ip, shape_buf_);
+        el.CalcShape(ip, shape_buf);
         const double rhs_val = EvaluateCoefficient(coeff_, trans, ip);
         const double w = ip.weight * trans.Weight();
 
         for (int i = 0; i < ndof; ++i)
         {
-            elvect(i) += w * rhs_val * shape_buf_(i);
+            elvect(i) += w * rhs_val * shape_buf(i);
         }
     }
 }
@@ -127,7 +136,8 @@ void CustomBoundaryMassIntegrator::AssembleElementMatrix(const mfem::FiniteEleme
     elmat.SetSize(ndof, ndof);
     elmat = 0.0;
 
-    shape_buf_.SetSize(ndof);
+    thread_local mfem::Vector shape_buf;
+    shape_buf.SetSize(ndof);
     const mfem::IntegrationRule &ir = ResolveIntegrationRule(el, trans, IntRule);
 
     for (int iq = 0; iq < ir.GetNPoints(); ++iq)
@@ -135,7 +145,7 @@ void CustomBoundaryMassIntegrator::AssembleElementMatrix(const mfem::FiniteEleme
         const mfem::IntegrationPoint &ip = ir.IntPoint(iq);
         trans.SetIntPoint(&ip);
 
-        el.CalcShape(ip, shape_buf_);
+        el.CalcShape(ip, shape_buf);
         const double w = ip.weight * trans.Weight() * EvaluateCoefficient(coeff_, trans, ip);
 
         // Exploit symmetry: compute upper triangle only
@@ -143,7 +153,7 @@ void CustomBoundaryMassIntegrator::AssembleElementMatrix(const mfem::FiniteEleme
         {
             for (int j = i; j < ndof; ++j)
             {
-                elmat(i, j) += w * shape_buf_(i) * shape_buf_(j);
+                elmat(i, j) += w * shape_buf(i) * shape_buf(j);
             }
         }
     }
@@ -166,7 +176,8 @@ void CustomBoundaryLFIntegrator::AssembleRHSElementVect(const mfem::FiniteElemen
     elvect.SetSize(ndof);
     elvect = 0.0;
 
-    shape_buf_.SetSize(ndof);
+    thread_local mfem::Vector shape_buf;
+    shape_buf.SetSize(ndof);
     const mfem::IntegrationRule &ir = ResolveIntegrationRule(el, trans, IntRule);
 
     for (int iq = 0; iq < ir.GetNPoints(); ++iq)
@@ -174,13 +185,13 @@ void CustomBoundaryLFIntegrator::AssembleRHSElementVect(const mfem::FiniteElemen
         const mfem::IntegrationPoint &ip = ir.IntPoint(iq);
         trans.SetIntPoint(&ip);
 
-        el.CalcShape(ip, shape_buf_);
+        el.CalcShape(ip, shape_buf);
         const double rhs_val = EvaluateCoefficient(coeff_, trans, ip);
         const double w = ip.weight * trans.Weight();
 
         for (int i = 0; i < ndof; ++i)
         {
-            elvect(i) += w * rhs_val * shape_buf_(i);
+            elvect(i) += w * rhs_val * shape_buf(i);
         }
     }
 }

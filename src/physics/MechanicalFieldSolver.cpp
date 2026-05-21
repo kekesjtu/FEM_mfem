@@ -1,8 +1,10 @@
-#include "fem/physics/MechanicalFieldSolver.hpp"
+#include "physics/MechanicalFieldSolver.hpp"
 
-#include "fem/assembler/MechanicalAssembler.hpp"
-#include "fem/log/Logger.hpp"
-#include "fem/solver/LinearSolverFactory.hpp"
+#include "assembler/MechanicalAssembler.hpp"
+#include "log/Logger.hpp"
+#include "solver/LinearSolverFactory.hpp"
+
+#include <stdexcept>
 
 namespace fem::physics
 {
@@ -62,19 +64,24 @@ void MechanicalFieldSolver::SolveRHSOnly()
 
     if (!stiffness_cached_)
     {
-        logger->warn("Stiffness matrix not cached, falling back to full Solve()");
-        Solve();
-        return;
+        throw std::runtime_error(
+            "MechanicalFieldSolver::SolveRHSOnly requires CacheStiffnessMatrix() first.");
     }
 
     // Assemble RHS via assembler
     auto lf = assembler::MechanicalAssembler::AssembleRHS(config_.fe.GetVectorFESpace(), coeffs_,
                                                           cached_bc_);
 
-    // Apply essential BCs to initial guess
-    displacement_ = 0.0;
+    // The first solve starts from zero; subsequent RHS-only solves reuse the previous
+    // displacement as an initial guess for the iterative solver.
+    if (!solver_factorized_)
+    {
+        displacement_ = 0.0;
+    }
     for (size_t i = 0; i < cached_bc_.disp_markers.size(); ++i)
+    {
         displacement_.ProjectBdrCoefficient(cached_bc_.disp_coeffs[i], cached_bc_.disp_markers[i]);
+    }
 
     // Form linear system using cached bilinear form
     mfem::OperatorPtr A;
@@ -83,17 +90,24 @@ void MechanicalFieldSolver::SolveRHSOnly()
 
     if (!solver_factorized_)
     {
-        cached_solver_ = solver::CreateLinearSolver(config_.simulation.GetSolver("mechanical"),
-                                                    1e-12, 1e-12, 5000, 0);
+        logger->info("Mechanical linear solve starts: solver='{}', true_ndof={}",
+                     config_.simulation.GetSolver("mechanical"),
+                     config_.fe.GetVectorFESpace().GlobalTrueVSize());
+        cached_solver_ =
+            solver::CreateLinearSolver(config_.simulation.GetSolver("mechanical"), 1e-8, 1e-12,
+                                       2000, 1, &config_.fe.GetVectorFESpace());
         cached_solver_->Solve(*A, B, X);
         solver_factorized_ = true;
     }
     else
     {
+        logger->info("Mechanical linear solve starts: solver='{}', cached operator/RHS",
+                     config_.simulation.GetSolver("mechanical"));
         cached_solver_->Mult(B, X);
     }
     cached_bilinear_->RecoverFEMSolution(X, *lf, displacement_);
 
+    logger->info("Mechanical linear solve done.");
     logger->debug("Mechanical: U=[{:.6e}, {:.6e}]", displacement_.Min(), displacement_.Max());
 }
 

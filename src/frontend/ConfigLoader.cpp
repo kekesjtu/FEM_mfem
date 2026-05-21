@@ -1,7 +1,7 @@
-#include "fem/frontend/ConfigLoader.hpp"
+#include "frontend/ConfigLoader.hpp"
 
-#include "fem/frontend/Expression.hpp"
-#include "fem/log/Logger.hpp"
+#include "frontend/Expression.hpp"
+#include "log/Logger.hpp"
 
 #include <fstream>
 #include <stdexcept>
@@ -14,11 +14,11 @@ using json = nlohmann::json;
 namespace
 {
 template <typename T>
-T ReadOrDefault(const json &node, const std::string &key, T fallback)
+T ReadOrDefault(const json &node, const std::string &key, T default_value)
 {
     if (!node.contains(key))
     {
-        return fallback;
+        return default_value;
     }
     return node.at(key).get<T>();
 }
@@ -126,9 +126,19 @@ void ConfigLoader::LoadSimulation(const json &root)
 
 void ConfigLoader::LoadMaterials(const json &root)
 {
-    if (!root.contains("materials") || !root.contains("domain_materials"))
+    const bool has_materials = root.contains("materials");
+    const bool has_material_to_attributes = root.contains("material_to_attributes");
+    if (!has_materials && !has_material_to_attributes)
     {
         return;
+    }
+    if (!has_materials)
+    {
+        throw std::runtime_error("Missing 'materials' section for material_to_attributes.");
+    }
+    if (!has_material_to_attributes)
+    {
+        throw std::runtime_error("Missing 'material_to_attributes' section for materials.");
     }
 
     auto &db = config_.materials;
@@ -143,12 +153,12 @@ void ConfigLoader::LoadMaterials(const json &root)
         }
     }
 
-    const auto &dm = root.at("domain_materials");
+    const auto &dm = root.at("material_to_attributes");
     for (auto it = dm.begin(); it != dm.end(); ++it)
     {
         const std::string &mat_name = it.key();
-        std::vector<int> domains = it.value().get<std::vector<int>>();
-        db.domain_to_material[mat_name] = std::move(domains);
+        std::vector<int> attrs = it.value().get<std::vector<int>>();
+        db.material_to_attributes[mat_name] = std::move(attrs);
     }
 
     // Auto-compute Lame parameters from Young's modulus and Poisson ratio
@@ -174,6 +184,34 @@ void ConfigLoader::LoadMaterials(const json &root)
             double rho = std::stod(rho_it->second);
             double cp = std::stod(cp_it->second);
             props["rho_cp"] = std::to_string(rho * cp);
+        }
+    }
+
+    for (const auto &[mat_name, attrs] : db.material_to_attributes)
+    {
+        auto props_it = db.material_to_properties.find(mat_name);
+        if (props_it == db.material_to_properties.end())
+        {
+            throw std::runtime_error("material_to_attributes references unknown material: " +
+                                     mat_name);
+        }
+
+        for (int attr : attrs)
+        {
+            if (attr <= 0)
+            {
+                throw std::runtime_error(
+                    "material_to_attributes contains non-positive attribute id for material: " +
+                    mat_name);
+            }
+            auto [it, inserted] = db.attr_to_material.emplace(attr, mat_name);
+            if (!inserted)
+            {
+                throw std::runtime_error("Attribute " + std::to_string(attr) +
+                                         " is assigned to both material '" + it->second +
+                                         "' and material '" + mat_name + "'");
+            }
+            db.attr_to_properties.emplace(attr, props_it->second);
         }
     }
 }
@@ -226,13 +264,13 @@ ScalarFieldConfig ConfigLoader::LoadScalarField(const json &field_node)
     ScalarFieldConfig cfg;
     cfg.source_default = ReadOrDefault<std::string>(field_node, "source_default", "0.0");
 
-    if (field_node.contains("source_by_domain"))
+    if (field_node.contains("attr_to_source"))
     {
-        for (auto it = field_node.at("source_by_domain").begin();
-             it != field_node.at("source_by_domain").end(); ++it)
+        for (auto it = field_node.at("attr_to_source").begin();
+             it != field_node.at("attr_to_source").end(); ++it)
         {
-            int domain_id = std::stoi(it.key());
-            cfg.domain_to_source[domain_id] = it.value().get<std::string>();
+            int attr = std::stoi(it.key());
+            cfg.attr_to_source[attr] = it.value().get<std::string>();
         }
     }
 
@@ -285,13 +323,13 @@ MechanicalFieldConfig ConfigLoader::LoadMechanicalField(const json &field_node)
         cfg.body_force_default = field_node.at("body_force_default").get<std::vector<double>>();
     }
 
-    if (field_node.contains("body_force_by_domain"))
+    if (field_node.contains("attr_to_body_force"))
     {
-        for (auto it = field_node.at("body_force_by_domain").begin();
-             it != field_node.at("body_force_by_domain").end(); ++it)
+        for (auto it = field_node.at("attr_to_body_force").begin();
+             it != field_node.at("attr_to_body_force").end(); ++it)
         {
-            int domain_id = std::stoi(it.key());
-            cfg.domain_to_body_force[domain_id] = it.value().get<std::vector<double>>();
+            int attr = std::stoi(it.key());
+            cfg.attr_to_body_force[attr] = it.value().get<std::vector<double>>();
         }
     }
 
@@ -385,8 +423,9 @@ bool ProjectConfig::NeedsPicardIteration() const
         return false;
     }
 
-    for (const auto &[mat_name, props] : materials.material_to_properties)
+    for (const auto &entry : materials.attr_to_properties)
     {
+        const auto &props = entry.second;
         auto it = props.find("electrical_conductivity");
         if (it != props.end())
         {

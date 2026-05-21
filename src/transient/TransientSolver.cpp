@@ -1,12 +1,12 @@
-#include "fem/transient/TransientSolver.hpp"
+#include "transient/TransientSolver.hpp"
 
-#include "fem/coupling/PicardCoupler.hpp"
-#include "fem/log/Logger.hpp"
-#include "fem/output/ResultExporter.hpp"
-#include "fem/physics/ElectrostaticFieldSolver.hpp"
-#include "fem/physics/MechanicalFieldSolver.hpp"
-#include "fem/physics/ThermalFieldSolver.hpp"
-#include "fem/transient/TransientUtils.hpp"
+#include "coupling/PicardCoupler.hpp"
+#include "log/Logger.hpp"
+#include "output/ResultExporter.hpp"
+#include "physics/ElectrostaticFieldSolver.hpp"
+#include "physics/MechanicalFieldSolver.hpp"
+#include "physics/ThermalFieldSolver.hpp"
+#include "transient/TransientUtils.hpp"
 
 #include <algorithm>
 #include <cmath>

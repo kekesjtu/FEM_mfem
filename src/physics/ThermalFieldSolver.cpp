@@ -1,8 +1,8 @@
-#include "fem/physics/ThermalFieldSolver.hpp"
+#include "physics/ThermalFieldSolver.hpp"
 
-#include "fem/assembler/ThermalAssembler.hpp"
-#include "fem/log/Logger.hpp"
-#include "fem/solver/LinearSolverFactory.hpp"
+#include "assembler/ThermalAssembler.hpp"
+#include "log/Logger.hpp"
+#include "solver/LinearSolverFactory.hpp"
 
 #include <stdexcept>
 

@@ -1,8 +1,8 @@
-#include "fem/solver/LinearSolverFactory.hpp"
+#include "solver/LinearSolverFactory.hpp"
 
-#include "fem/solver/MfemMumpsSolver.hpp"
-#include "fem/solver/MfemPardisoSolver.hpp"
-#include "fem/solver/MfemPcgSolver.hpp"
+#include "solver/MfemMumpsSolver.hpp"
+#include "solver/MfemPardisoSolver.hpp"
+#include "solver/MfemPcgSolver.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -21,12 +21,14 @@ std::string NormalizeSolverName(std::string name)
 }  // namespace
 
 std::unique_ptr<ILinearSolver> CreateLinearSolver(const std::string &solver_name, double rel_tol,
-                                                  double abs_tol, int max_iter, int print_level)
+                                                  double abs_tol, int max_iter, int print_level,
+                                                  mfem::ParFiniteElementSpace *elasticity_fespace)
 {
     const std::string normalized = NormalizeSolverName(solver_name);
     if (normalized.empty() || normalized == "pcg")
     {
-        return std::make_unique<MfemPcgSolver>(rel_tol, abs_tol, max_iter, print_level);
+        return std::make_unique<MfemPcgSolver>(rel_tol, abs_tol, max_iter, print_level,
+                                               elasticity_fespace);
     }
     if (normalized == "mumps")
     {

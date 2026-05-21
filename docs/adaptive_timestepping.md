@@ -287,13 +287,44 @@ while 尚有未输出的时刻:
 
 ---
 
-## 13. 相关源文件
+## 13. 线程安全改造的验证要点
+
+自适应时间步对浮点扰动比较敏感：局部装配顺序、表达式求值状态或 RHS 细微变化，都可能改变 WRMS、拒步次数和输出快照插值区间。因此引入 rank 内线程装配时，必须先用单线程基线做回归。
+
+当前主基线：
+
+```bash
+env OMP_NUM_THREADS=1 OMP_DYNAMIC=false \
+mpirun -np 1 ./build/linux-release/bin/FEM_solution \
+  configs/busbar_etm_nonlinear_transient_vbc.json
+```
+
+记录结果：
+
+- accepted steps: `19`
+- rejected steps: `5`
+- output snapshots: `11`
+- baseline file: `results/threadsafe_baseline/busbar_transient_vbc_omp1_np1_prechange.txt`
+
+后续验证顺序：
+
+1. `OMP_NUM_THREADS=1`：结果文件应与基线逐字节一致，或至少在没有输出格式变化时保持相同 SHA-256。
+2. `OMP_NUM_THREADS=2/4/8`：accepted/rejected step 数、输出快照数和 WRMS 日志应稳定；结果允许出现并行归约带来的末位浮点差异。
+3. 多 MPI rank + 多线程：检查 `ComputeAdaptiveError()` 的全局 true-DOF 统计仍只由主线程触发 MPI 通信。
+
+当前 OpenMP 接入后的主算例验证：
+
+- `OMP_NUM_THREADS=1`：`transient.txt` 与基线 SHA-256 完全一致。
+- `OMP_NUM_THREADS=4`：accepted/rejected/snapshot 仍为 `19/5/11`，WRMS 日志与基线一致。
+- `OMP_NUM_THREADS=4` 与基线宽表最大绝对差为 `2.0631869710542637e-19`，平均绝对差为 `2.4324804741883336e-21`。
+
+## 14. 相关源文件
 
 | 文件                                         | 职责                                               |
 | -------------------------------------------- | -------------------------------------------------- |
 | `src/transient/TransientSolver.cpp`          | 主时间循环、阶数选择、历史管理                     |
 | `src/transient/TransientUtils.cpp`           | `ComputeAdaptiveError()`、`EmitOutputSnapshot()`   |
 | `src/physics/ThermalFieldSolver.cpp`         | `SolveBE()`、`SolveBDF2()`、`ComputeInitialRate()` |
-| `include/fem/transient/TransientSolver.hpp`  | `TransientSnapshot` 结构体、`TransientSolver` 类   |
-| `include/fem/transient/TransientUtils.hpp`   | `WRMSResult` 结构体、工具函数声明                  |
-| `include/fem/physics/ThermalFieldSolver.hpp` | `SolveState` 缓存结构、接口声明                    |
+| `include/transient/TransientSolver.hpp`  | `TransientSnapshot` 结构体、`TransientSolver` 类   |
+| `include/transient/TransientUtils.hpp`   | `WRMSResult` 结构体、工具函数声明                  |
+| `include/physics/ThermalFieldSolver.hpp` | `SolveState` 缓存结构、接口声明                    |

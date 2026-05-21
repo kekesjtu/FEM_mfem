@@ -1,9 +1,9 @@
-#include "fem/app/Application.hpp"
+#include "app/Application.hpp"
 
-#include "fem/frontend/ConfigLoader.hpp"
-#include "fem/log/Logger.hpp"
-#include "fem/steady/SteadySolver.hpp"
-#include "fem/transient/TransientSolver.hpp"
+#include "frontend/ConfigLoader.hpp"
+#include "log/Logger.hpp"
+#include "steady/SteadySolver.hpp"
+#include "transient/TransientSolver.hpp"
 
 #include <mpi.h>
 #include <cstdlib>

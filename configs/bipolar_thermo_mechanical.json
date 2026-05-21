@@ -30,7 +30,7 @@
       }
     }
   ],
-  "domain_materials": {
+  "material_to_attributes": {
     "titanium": [1, 2],
     "aluminum": [3]
   },
@@ -39,7 +39,7 @@
       "type": "thermal",
       "source_default": "0.0",
       "initial_temperature": 273.15,
-      "source_by_domain": {
+      "attr_to_source": {
         "3": "1.1086e7"
       },
       "robin_boundary_conditions": [

@@ -1,7 +1,7 @@
-#include "fem/coeff/ElectrostaticCoeffs.hpp"
+#include "coeff/ElectrostaticCoeffs.hpp"
 
-#include "fem/coeff/CoefficientManager.hpp"
-#include "fem/frontend/Config.hpp"
+#include "coeff/CoefficientManager.hpp"
+#include "frontend/Config.hpp"
 
 namespace fem::coeff
 {

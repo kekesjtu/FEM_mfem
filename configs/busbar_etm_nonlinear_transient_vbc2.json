@@ -5,6 +5,7 @@
     "order": 1,
     "uniform_refinement_levels": 0,
     "solver": "pcg",
+    "solver_mechanical": "pcg",
     "output_dir": "results/busbar_transient_vbc2",
     "log_level": "info",
     "picard_max_iterations": 25,
@@ -50,7 +51,7 @@
       }
     }
   ],
-  "domain_materials": {
+  "material_to_attributes": {
     "copper": [1],
     "titanium": [2, 3, 4, 5, 6, 7]
   },

@@ -35,13 +35,11 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # 查找OpenMP
-find_package(OpenMP)
-if(OpenMP_CXX_FOUND)
-    message(STATUS "OpenMP found: ${OpenMP_CXX_VERSION}")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-else()
-    message(WARNING "OpenMP not found. Parallel assembly will be disabled.")
-endif()
+find_package(OpenMP REQUIRED)
+message(STATUS "OpenMP found: ${OpenMP_CXX_VERSION}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+set(MFEM_USE_OPENMP ON CACHE BOOL "Enable MFEM OpenMP backend" FORCE)
+set(MFEM_THREAD_SAFE ON CACHE BOOL "Enable thread-safe MFEM finite element kernels" FORCE)
 
 # 依赖: spdlog
 find_package(spdlog QUIET)

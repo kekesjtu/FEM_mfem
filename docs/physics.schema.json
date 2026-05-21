@@ -169,13 +169,13 @@
         "additionalProperties": false
       }
     },
-    "domain_materials": {
+    "material_to_attributes": {
       "type": "object",
       "additionalProperties": {
         "type": "array",
         "items": { "type": "integer", "minimum": 1 }
       },
-      "description": "Map material name to domain attribute list. Used for piecewise material property assignment."
+      "description": "Map material name to MFEM volume attribute id list. Used for piecewise material property assignment."
     },
     "fields": {
       "type": "array",
@@ -189,10 +189,10 @@
             "enum": ["electrostatic", "thermal", "mechanical"]
           },
           "source_default": { "type": "string", "default": "0.0" },
-          "source_by_domain": {
+          "attr_to_source": {
             "type": "object",
             "additionalProperties": { "type": "string" },
-            "description": "Domain attribute -> constant source string. Current thermal source loader parses these values with std::stod."
+            "description": "Attribute id -> constant source string. Current thermal source loader parses these values with std::stod."
           },
           "dirichlet_boundary_conditions": {
             "type": "array",
@@ -241,7 +241,7 @@
             "maxItems": 3,
             "default": [0.0, 0.0, 0.0]
           },
-          "body_force_by_domain": {
+          "attr_to_body_force": {
             "type": "object",
             "additionalProperties": {
               "type": "array",

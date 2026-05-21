@@ -9,7 +9,12 @@
 ```cpp
 int main(int argc, char *argv[])
 {
-    mfem::Mpi::Init(argc, argv);
+    int provided = MPI_THREAD_SINGLE;
+    mfem::Mpi::Init(argc, argv, MPI_THREAD_FUNNELED, &provided);
+    if (provided < MPI_THREAD_FUNNELED)
+    {
+        return 1;
+    }
     mfem::Hypre::Init();
 
     // build ParMesh, ParFiniteElementSpace, ParGridFunction...
@@ -18,18 +23,25 @@ int main(int argc, char *argv[])
 }
 ```
 
-本项目入口在 `main.cpp` 中初始化 MPI 和 Hypre，然后所有求解路径都使用并行对象；即使 `-np 1`，也运行同一套并行代码。
+本项目入口在 `main.cpp` 中请求 `MPI_THREAD_FUNNELED`，初始化 MPI 和 Hypre，然后所有求解路径都使用并行对象；即使 `-np 1`，也运行同一套并行代码。`MPI_THREAD_FUNNELED` 表示进程内可以存在 worker 线程，但只有主线程调用 MPI。
 
 常用接口：
 
 | 接口 | 说明 |
 | ---- | ---- |
-| `mfem::Mpi::Init(argc, argv)` | 初始化 MPI。 |
+| `mfem::Mpi::Init(argc, argv, required, &provided)` | 初始化 MPI；`required != MPI_THREAD_SINGLE` 时走 `MPI_Init_thread()`。 |
 | `mfem::Mpi::WorldRank()` | 当前 rank。 |
 | `mfem::Mpi::WorldSize()` | 总 rank 数。 |
 | `mfem::Hypre::Init()` | 初始化 Hypre 并行线性代数环境。 |
 | `MPI_Comm_rank(comm, &rank)` | MPI 原生 rank 查询。 |
 | `MPI_Comm_size(comm, &size)` | MPI 原生 size 查询。 |
+
+主线程与 worker 线程的边界：
+
+- 主线程调用 MPI、Hypre、`ParallelAssemble()`、`FormLinearSystem()`、求解器和输出聚合。
+- worker 线程只做本 rank 本地域单元的数值积分、系数求值和局部贡献计算。
+- 当前边界单元装配、局部贡献合并、并行组装和线性代数仍留在主线程。
+- 不请求 `MPI_THREAD_MULTIPLE`，避免把线程安全要求扩展到 MPI、Hypre 和直接求解器对象。
 
 ## 2. 多进程对象关系
 
@@ -40,8 +52,8 @@ Mesh on every rank
   -> ParMesh partitions ownership
   -> ParFiniteElementSpace defines local/true/global DOFs
   -> ParGridFunction stores rank-local L-vector
-  -> ParBilinearForm / ParLinearForm assemble local contributions
-  -> ParallelAssemble builds global distributed system
+  -> ParBilinearForm / ParLinearForm assemble rank-local contributions
+  -> ParallelAssemble builds distributed true-DOF system
   -> HypreParMatrix + Vector true DOF solve
   -> Distribute or SetFromTrueDofs recovers field
 ```
@@ -51,8 +63,8 @@ Mesh on every rank
 | `Mesh` | `ParMesh` | 分布式网格，每个 rank 拥有一部分单元和共享边界信息。 |
 | `FiniteElementSpace` | `ParFiniteElementSpace` | 分布式有限元空间。 |
 | `GridFunction` | `ParGridFunction` | 每个 rank 的本地场向量。 |
-| `BilinearForm` | `ParBilinearForm` | 本地装配 + 并行组装接口。 |
-| `LinearForm` | `ParLinearForm` | 本地 RHS 装配 + 并行组装接口。 |
+| `BilinearForm` | `ParBilinearForm` | rank 本地装配 + true-DOF 并行组装接口。 |
+| `LinearForm` | `ParLinearForm` | rank 本地 RHS 装配 + true-DOF 并行组装接口。 |
 | `SparseMatrix` | `HypreParMatrix` | 分布式稀疏矩阵。 |
 
 ## 3. ParMesh
@@ -168,7 +180,7 @@ std::unique_ptr<mfem::HypreParMatrix> A(a.ParallelAssemble());
 | `AddBoundaryIntegrator()` | 添加边界积分子。 |
 | `Assemble()` | 本地装配。 |
 | `Finalize()` | 完成本地矩阵。 |
-| `ParallelAssemble()` | 组装为分布式矩阵。 |
+| `ParallelAssemble()` | 将本地 L-vector 矩阵组装为分布式 true-DOF 矩阵。 |
 | `FormLinearSystem(ess_tdofs, x, b, A, X, B)` | 生成带本质边界处理的并行线性系统。 |
 | `RecoverFEMSolution(X, b, x)` | 从 true DOF 解恢复有限元场。 |
 
@@ -191,7 +203,7 @@ b.ParallelAssemble(B);
 | `AddDomainIntegrator()` | 添加体源。 |
 | `AddBoundaryIntegrator()` | 添加边界源。 |
 | `Assemble()` | 本地 RHS 装配。 |
-| `ParallelAssemble(vec)` | 组装 true DOF RHS。 |
+| `ParallelAssemble(vec)` | 将本地 L-vector RHS 组装为 true-DOF RHS。 |
 
 ## 7. HypreParMatrix 与 true DOF 线性系统
 
@@ -221,7 +233,6 @@ cg.Mult(B, X);
 | 求解器 | 说明 |
 | ------ | ---- |
 | `CGSolver(comm)` | 并行 CG。 |
-| `GMRESSolver(comm)` | 并行 GMRES。 |
 | `HypreBoomerAMG` | AMG 预条件器。 |
 | `HyprePCG` | Hypre PCG 包装。 |
 | `MUMPSSolver` | 并行直接求解器，需要构建支持。 |
@@ -231,12 +242,12 @@ cg.Mult(B, X);
 
 ## 8. 边界条件的并行处理
 
-并行路径中，边界属性 marker 仍按属性编号构造：
+并行路径中，边界 marker 仍按 MFEM 的边界编号构造：
 
 ```cpp
 mfem::Array<int> marker(pmesh.bdr_attributes.Max());
 marker = 0;
-marker[attr - 1] = 1;
+marker[bdr_attr - 1] = 1;
 ```
 
 然后转换为 true DOF：
@@ -335,4 +346,4 @@ rank 0:
 | `ResultExporter` | 分布式 ParaView 输出和 rank 0 文本导出。 |
 | `Application` | 求解后只在 rank 0 调用 Python 对比脚本。 |
 
-当前项目已经把“MPI 多进程”作为默认求解骨架；下一步若要做 rank 内线程化，应优先保持这些 MPI 对象的所有权和通信语义不变。
+当前项目已经把“MPI 多进程”作为默认求解骨架，并已接入第一版 rank 内 OpenMP 域单元局部装配。这个改造不改变 `ParMesh`、true DOF、`HypreParMatrix` 和求解器的所有权，MPI 通信语义仍由主线程集中触发。

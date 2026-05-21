@@ -19,8 +19,19 @@ FEM_solution [config_path]
 推荐运行方式：
 
 ```bash
-mpirun -np 4 ./build/linux-release/bin/FEM_solution configs/busbar_etm_nonlinear_transient_vbc.json
+env OMP_NUM_THREADS=4 OMP_DYNAMIC=false \
+mpirun -np 4 ./build/linux-release/bin/FEM_solution \
+  configs/busbar_etm_nonlinear_transient_vbc.json
 ```
+
+当前入口请求 `MPI_THREAD_FUNNELED`。这允许在每个 MPI rank 内创建 OpenMP worker 线程，但项目约定只有主线程调用 MPI、Hypre、`ParallelAssemble()`、`FormLinearSystem()`、线性求解器和输出聚合。
+
+运行时开关：
+
+| 环境变量 | 说明 |
+| -------- | ---- |
+| `OMP_NUM_THREADS` | 控制每个 MPI rank 内的 OpenMP worker 数。`1` 时走同一本地装配执行器的单 worker 路径。 |
+| `OMP_DYNAMIC=false` | 建议验证阶段关闭动态线程数，保证可复现。 |
 
 ### 1.2 应用流程
 
@@ -37,6 +48,30 @@ mpirun -np 4 ./build/linux-release/bin/FEM_solution configs/busbar_etm_nonlinear
 
 应用层只关心“配置 -> 求解 -> 输出”的生命周期，不直接暴露底层矩阵、向量或并行对象。
 
+### 1.3 基线结果记录
+
+线程安全改造前的主对照算例为：
+
+```bash
+env OMP_NUM_THREADS=1 OMP_DYNAMIC=false \
+mpirun -np 1 ./build/linux-release/bin/FEM_solution \
+  configs/busbar_etm_nonlinear_transient_vbc.json
+```
+
+记录文件：
+
+```text
+results/threadsafe_baseline/busbar_transient_vbc_omp1_np1_prechange.txt
+```
+
+该基线覆盖材料表达式 `T`、边界表达式 `t`、自适应步长和力学快照批量求解。后续引入 rank 内线程装配时，至少应保持 accepted/rejected step 数、输出快照数和结果文件在容许浮点误差内一致。
+
+当前 OpenMP 接入后的验证：
+
+- `OMP_NUM_THREADS=1`：单 worker 本地装配路径的 `transient.txt` 与基线 SHA-256 完全一致。
+- `OMP_NUM_THREADS=4`：accepted/rejected/snapshot 为 `19/5/11`，WRMS 日志与基线一致。
+- `OMP_NUM_THREADS=4` 与基线宽表最大绝对差为 `2.0631869710542637e-19`，平均绝对差为 `2.4324804741883336e-21`。
+
 ## 2. JSON 配置接口
 
 配置文件是项目最主要的用户接口。顶层结构如下：
@@ -45,7 +80,7 @@ mpirun -np 4 ./build/linux-release/bin/FEM_solution configs/busbar_etm_nonlinear
 {
   "simulation": {},
   "materials": [],
-  "domain_materials": {},
+  "material_to_attributes": {},
   "fields": []
 }
 ```
@@ -54,7 +89,7 @@ mpirun -np 4 ./build/linux-release/bin/FEM_solution configs/busbar_etm_nonlinear
 | -------- | ---- | ---- |
 | `simulation` | 是 | 网格、阶次、输出、求解器、耦合迭代、瞬态和自动对比参数。 |
 | `materials` | 否 | 材料属性表。 |
-| `domain_materials` | 否 | 材料名到网格域编号列表的映射。 |
+| `material_to_attributes` | 否 | 材料名到 MFEM 体属性编号列表的映射。 |
 | `fields` | 是 | 启用的物理场列表。 |
 
 完整 schema 见 [physics.schema.json](physics.schema.json)。
@@ -93,7 +128,7 @@ mpirun -np 4 ./build/linux-release/bin/FEM_solution configs/busbar_etm_nonlinear
 | `curve_reference_path` | string | `""` | 求解后自动采样点时间曲线对比的参考文件；为空则跳过。 |
 | `curve_compare_args` | string | `""` | 传给时间曲线对比脚本的额外参数。 |
 
-### 2.2 材料与域映射
+### 2.2 材料与属性映射
 
 材料属性以字符串存储，便于表达常数或表达式：
 
@@ -113,7 +148,7 @@ mpirun -np 4 ./build/linux-release/bin/FEM_solution configs/busbar_etm_nonlinear
       }
     }
   ],
-  "domain_materials": {
+  "material_to_attributes": {
     "copper": [1, 2]
   }
 }
@@ -175,7 +210,8 @@ mpirun -np 4 ./build/linux-release/bin/FEM_solution configs/busbar_etm_nonlinear
 | ---- | ---- | ---- | ---- |
 | `Application` | 配置路径 | 进程返回码 | 顶层生命周期编排。 |
 | `ConfigLoader` | JSON 文件 | 项目配置对象 | 解析配置、材料、物理场与离散设置，并做基本校验。 |
-| `Expression` | 表达式字符串 | 数值结果 | 计算依赖 `x,y,z,t,T` 的用户表达式，并检测变量依赖。 |
+| `Expression` | 表达式字符串 | 只读表达式描述 | 保存表达式文本、常量判定和变量依赖检测入口。 |
+| `ExpressionRuntime` | `Expression` 与求值上下文 | 数值结果 | 持有 muparser 实例和 `x,y,z,t,T` 变量槽；热路径中应按线程私有缓存。 |
 
 配置层不负责物理装配，只负责把用户输入变成内部可消费的数据结构。
 
@@ -202,9 +238,17 @@ mpirun -np 4 ./build/linux-release/bin/FEM_solution configs/busbar_etm_nonlinear
 | ---- | ---- | ---- | ---- |
 | `ScalarBCBuilder` | 标量场边界配置 | 标量边界数据 | 构造 Dirichlet/Robin 边界标记与系数数据。 |
 | `MechanicalBCBuilder` | 力学边界配置 | 力学边界数据 | 构造位移、法向位移罚约束和压力边界数据。 |
-| `CoefficientManager` | 材料库、域映射、场变量 | 系数对象 | 统一材料属性、表达式系数和 Joule 热源。 |
+| `CoefficientManager` | 材料库、属性映射、场变量 | 系数对象 | 统一材料属性、表达式系数和 Joule 热源。 |
+| `LocalAssemblyExecutor` | 有限元空间、integrator factory、边界 marker | `ParBilinearForm` / `ParLinearForm` | 在 OpenMP worker 中并行计算域单元局部贡献，由主线程合并到 MFEM form。 |
 | `ResultExporter` | 输出目录、场结果、时间信息 | ParaView 与文本文件 | 导出稳态和瞬态结果。 |
 | `SolutionTextExporter` | 场结果、网格节点、时间序列 | 文本宽表 | 生成与 COMSOL 对齐的节点文本格式。 |
+
+线程化约定：
+
+- 自定义系数的可变缓冲和表达式 runtime 必须是线程私有。
+- 自定义积分子不得依赖共享 scratch；OpenMP 装配时，每个 worker 线程持有一份 integrator 实例。
+- 当前并行域单元局部装配；边界单元装配仍留在主线程。
+- 主线程负责合并局部贡献并进入 MFEM 并行装配和线性代数阶段。
 
 ## 4. 输出文件接口
 

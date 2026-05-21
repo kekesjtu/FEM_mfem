@@ -1,6 +1,6 @@
-#include "fem/coupling/PicardCoupler.hpp"
+#include "coupling/PicardCoupler.hpp"
 
-#include "fem/log/Logger.hpp"
+#include "log/Logger.hpp"
 
 #include <mpi.h>
 #include <cmath>

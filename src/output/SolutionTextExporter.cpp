@@ -1,4 +1,4 @@
-#include "fem/output/SolutionTextExporter.hpp"
+#include "output/SolutionTextExporter.hpp"
 
 #include <cmath>
 #include <filesystem>
