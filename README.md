@@ -1,8 +1,8 @@
 # FEM Multi-Physics Solver
 
-基于 MFEM 的 MPI 并行多物理场有限元求解器。当前项目主线是显式矩阵装配 + Hypre 并行线性代数，支持静电、热传导和准静态线弹性，以及电-热、热-力、电-热-力组合计算。
+基于 MFEM 的 MPI 并行多物理场有限元求解器。当前项目主线是 `ParMesh` 分布式网格、显式矩阵装配、rank 内 OpenMP 局部装配执行器，以及 Hypre/MFEM 并行线性代数，支持静电、热传导和准静态线弹性，以及电-热、热-力、电-热-力组合计算。
 
-本文档按当前代码实现整理。项目接口、MFEM 常用接口、MFEM MPI 接口和自适应时间步说明分别见 [docs/project_interfaces.md](docs/project_interfaces.md)、[docs/mfem_common_interfaces.md](docs/mfem_common_interfaces.md)、[docs/mfem_mpi_interfaces.md](docs/mfem_mpi_interfaces.md) 与 [docs/adaptive_timestepping.md](docs/adaptive_timestepping.md)；原有完整索引 [docs/mfem_api.md](docs/mfem_api.md) 暂时保留。
+本文档按当前代码实现整理。项目接口、MFEM 常用接口、MFEM MPI 接口、混合并行分析和自适应时间步说明分别见 [docs/project_interfaces.md](docs/project_interfaces.md)、[docs/mfem_common_interfaces.md](docs/mfem_common_interfaces.md)、[docs/mfem_mpi_interfaces.md](docs/mfem_mpi_interfaces.md)、[docs/hybrid_parallel_mfem.md](docs/hybrid_parallel_mfem.md) 与 [docs/adaptive_timestepping.md](docs/adaptive_timestepping.md)；原有完整索引 [docs/mfem_api.md](docs/mfem_api.md) 暂时保留。
 
 ## 目录
 
@@ -27,10 +27,13 @@
 | 矢量场空间 | `H1^dim`，用于力学位移 |
 | 网格 | MFEM/Gmsh `.msh`；仓库中有 COMSOL `.mphtxt` 转换脚本 |
 | MPI | 始终创建 `ParMesh` 和并行有限元空间，`mpirun -np 1` 也是并行代码路径 |
+| rank 内 OpenMP | 自定义 `LocalAssemblyExecutor` 并行计算本 rank 的域单元和边界单元局部矩阵/向量，主线程合并到 MFEM form |
 | 线性系统 | `HypreParMatrix` + true-DOF 向量 |
 | 输出 | ParaView DataCollection 与 rank 0 聚合后的节点文本文件 |
 
 `ConfigLoader::BuildFE()` 先读取串行网格并做可选均匀细化，然后用 `mfem::ParMesh(MPI_COMM_WORLD, mesh)` 建立分布式网格。项目已经没有单独的串行求解主路径。
+
+OpenMP 当前用于有限元装配阶段的局部积分计算：每个 worker 线程持有自己的 integrator 实例、表达式 runtime 和 scratch 缓冲；`ParallelAssemble()`、`FormLinearSystem()`、Hypre/MFEM 线性求解和输出聚合仍由主线程发起。
 
 ### 1.2 物理场组合
 
@@ -88,7 +91,7 @@ $$
 - Dirichlet 边界，`value` 可为数字或依赖 `t` 的字符串表达式。
 - Robin 边界，形式与标量通用装配一致：`sigma dV/dn = q - l V`。
 
-注意：静电场的 `source_default` 和 `source_by_domain` 当前没有接入系数构造，体源实际固定为 0。
+注意：静电场虽然复用标量场配置结构，但 `source_default` 和 `attr_to_source` 当前没有接入静电系数构造，体源实际固定为 0。
 
 ### 2.2 热场
 
@@ -138,7 +141,7 @@ $$
 
 - 热导率 `diffusion`：当前按分域常数读取。
 - 热容 `rho_cp`：可直接提供，也可由 `density * heat_capacity` 自动生成。
-- 基础热源 `source_default` / `source_by_domain`：当前按常数字符串读取。
+- 基础热源 `source_default` / `attr_to_source`：当前按常数字符串读取。
 - Joule 热源：若启用静电场，自动叠加 `sigma |grad V|^2`。
 - Dirichlet 与 Robin 边界。
 
@@ -198,6 +201,16 @@ $$
 | `pardiso` | `mfem::CPardisoSolver` | MKL Cluster PARDISO，并行直接求解 |
 
 仓库中保留了 `MfemUmfpackSolver` 包装类，但工厂函数当前不暴露 `umfpack`，且该实现会抛出“串行 UMFPACK 不支持并行配置”的异常。配置文件中请使用 `pcg`、`mumps` 或 `pardiso`。
+
+`pcg` 当前使用 MFEM 的 `CGSolver` 做外层 Krylov 迭代，预条件子是 `HypreBoomerAMG`。对力学场，AMG 当前调用 `SetSystemsOptions(dim, byNODES)` 配置向量系统；此前测试过 `SetElasticityOptions()`，小算例可运行，但在 busbar2 力学批量求解上收敛明显更慢，因此当前默认保留 `SetSystemsOptions()`。
+
+线性代数求解器层面的混合并行状态要和装配阶段区分开：
+
+- `mpirun -np N` 已经驱动 `HypreParMatrix`、MUMPS 和 MKL Cluster PARDISO 的 MPI 并行。
+- `OMP_NUM_THREADS=M` 已经驱动项目自有装配执行器，也可配合 `MFEM_DEVICE=omp` 让部分 MFEM 向量 kernel 走 OpenMP。
+- 当前系统 HYPRE 头文件显示未启用 `HYPRE_USING_OPENMP`，所以 `HypreBoomerAMG` 不是完整的 HYPRE MPI+OpenMP AMG 路径。
+- 当前 MKL PARDISO/CPARDISO 链接的是 `libmkl_sequential.so`，不是 MKL threaded layer。
+- 若后续要把线性代数求解器本身做成真正混合并行，优先路线是使用 OpenMP 版 HYPRE，并评估把 PCG 外层从 `mfem::CGSolver` 切到 `mfem::HyprePCG`。
 
 ### 3.2 稳态流程
 
@@ -346,7 +359,7 @@ $$
 
 `dt_max = 0` 时，代码使用 `transient_output_interval` 作为有效最大步长。瞬态启用时，加载器会检查自适应步长容差与步长上下限。
 
-### 4.2 `materials` 与 `domain_materials`
+### 4.2 `materials` 与 `material_to_attributes`
 
 ```jsonc
 {
@@ -364,12 +377,14 @@ $$
       }
     }
   ],
-  "domain_materials": {
+  "material_to_attributes": {
     "copper": [1],
     "titanium": [2, 3, 4, 5, 6, 7]
   }
 }
 ```
+
+`attributes` 对应 MFEM 体单元属性 id；边界条件统一使用 `bdr_attributes`，对应 MFEM 边界属性 id。当前配置不再支持旧字段名。
 
 | 属性 | 用途 | 当前读取方式 |
 | ---- | ---- | ------------ |
@@ -405,7 +420,7 @@ $$
 {
   "type": "thermal",
   "source_default": "0.0",
-  "source_by_domain": {
+  "attr_to_source": {
     "3": "1.1086e7"
   },
   "initial_temperature": 293.15,
@@ -456,14 +471,14 @@ $$
 
 ```bash
 cmake --preset mfem-bundled-linux-debug
-cmake --build build/linux-debug --target FEM_solution -j$(nproc)
+cmake --build build/linux-debug --target my_fem -j$(nproc)
 ```
 
 ### 5.3 Release 构建
 
 ```bash
 cmake --preset linux-release
-cmake --build build/linux-release --target FEM_solution -j$(nproc)
+cmake --build build/linux-release --target my_fem -j$(nproc)
 ```
 
 也可以直接构建 CMake 目标名：
@@ -479,9 +494,20 @@ cmake --build build/linux-release --target my_fem -j$(nproc)
 ### 6.1 稳态电热单向耦合
 
 ```bash
+env OMP_NUM_THREADS=1 OMP_DYNAMIC=false \
 mpirun -np 4 ./build/linux-release/bin/FEM_solution \
   configs/busbar_electro_thermal_oneway.json
 ```
+
+开启 rank 内 OpenMP 装配时，把 `OMP_NUM_THREADS` 设为每个 MPI rank 使用的线程数：
+
+```bash
+env OMP_NUM_THREADS=4 OMP_DYNAMIC=false OMP_PROC_BIND=close OMP_PLACES=cores \
+mpirun -np 2 ./build/linux-release/bin/FEM_solution \
+  configs/busbar_electro_thermal_oneway.json
+```
+
+`MPI ranks * OMP_NUM_THREADS` 建议不要超过物理核心数。若只是希望测试 MFEM 向量 kernel 的 OpenMP backend，可额外设置 `MFEM_DEVICE=omp`；这不等价于 HYPRE AMG 本身已经启用 OpenMP。
 
 ### 6.2 稳态电热 Picard
 
@@ -538,7 +564,7 @@ FEM_mfem/
 ├── main.cpp
 ├── CMakeLists.txt
 ├── CMakePresets.json
-├── include/fem/
+├── include/
 │   ├── app/              # Application 顶层入口
 │   ├── frontend/         # Config, ConfigLoader, Expression
 │   ├── physics/          # E/T/M 场求解器
@@ -552,7 +578,7 @@ FEM_mfem/
 │   ├── solver/           # 线性求解器抽象与工厂
 │   ├── output/           # ParaView 与 txt 导出
 │   └── log/              # spdlog 封装
-├── src/                  # 与 include/fem/ 对应的实现
+├── src/                  # 与 include/ 对应的实现
 ├── configs/              # 示例配置
 ├── docs/                 # schema、接口文档、MFEM API、自适应步长、并行分析文档
 ├── tools/                # 网格转换与结果对比脚本
@@ -613,4 +639,5 @@ python3 tools/compare_time_curves.py \
 - 静电场材料电导率支持表达式，常用变量是 `T`；时变电压边界表达式通过 `value` 字符串提供，当前只传入时间 `t`。
 - 当前瞬态主路径面向含热场的问题；已有示例均为 E+T+M。若要做纯热瞬态或 E+T 瞬态，需要先补齐导出阶段对缺失 vector FE space 的保护。
 - `umfpack` 包装类保留但不属于当前可配置求解器。
-- 当前没有 MPI 子通信器分组、场间任务并发、GPU/Partial Assembly 主路径，也没有 rank 内自定义 OpenMP 装配。
+- 当前没有 MPI 子通信器分组、场间任务并发、GPU/Partial Assembly 主路径。
+- 线性代数求解器当前仍以 MPI 并行为主；装配阶段已经有 rank 内 OpenMP，HYPRE AMG 与 MKL CPARDISO 的求解器内部 OpenMP 还需要对应的底层库构建和链接配置。

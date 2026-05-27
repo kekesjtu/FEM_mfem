@@ -26,8 +26,15 @@ void MfemPcgSolver::Solve(mfem::Operator &A, const mfem::Vector &b, mfem::Vector
             "MfemPcgSolver requires mfem::HypreParMatrix operator (MPI parallel only).");
     }
 
-    auto amg = std::make_unique<mfem::HypreBoomerAMG>();
+    auto amg = std::make_unique<mfem::HypreBoomerAMG>(*hypre_matrix);
     amg->SetPrintLevel(0);
+    if (elasticity_fespace_)
+    {
+        // SetSystemsOptions needs the operator height when constructing the byNODES dof map.
+        const int dim = elasticity_fespace_->GetParMesh()->Dimension();
+        amg->SetSystemsOptions(dim,
+                               elasticity_fespace_->GetOrdering() == mfem::Ordering::byNODES);
+    }
 
     int par_print = (mfem::Mpi::WorldRank() == 0) ? print_level_ : 0;
     auto cg = std::make_unique<mfem::CGSolver>(hypre_matrix->GetComm());
@@ -36,14 +43,8 @@ void MfemPcgSolver::Solve(mfem::Operator &A, const mfem::Vector &b, mfem::Vector
     cg->SetMaxIter(max_iter_);
     cg->SetPrintLevel(par_print);
     cg->iterative_mode = elasticity_fespace_ != nullptr;
-    cg->SetPreconditioner(*amg);
     cg->SetOperator(*hypre_matrix);
-    if (elasticity_fespace_)
-    {
-        const int dim = elasticity_fespace_->GetParMesh()->Dimension();
-        amg->SetSystemsOptions(dim,
-                               elasticity_fespace_->GetOrdering() == mfem::Ordering::byNODES);
-    }
+    cg->SetPreconditioner(*amg);
     cg->Mult(b, x);
 
     if (!cg->GetConverged())

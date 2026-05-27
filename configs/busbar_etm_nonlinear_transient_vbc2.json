@@ -5,7 +5,7 @@
     "order": 1,
     "uniform_refinement_levels": 0,
     "solver": "pcg",
-    "solver_mechanical": "pcg",
+    "solver_mechanical":"mumps",
     "output_dir": "results/busbar_transient_vbc2",
     "log_level": "info",
     "picard_max_iterations": 25,
