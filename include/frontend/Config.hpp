@@ -135,8 +135,6 @@ struct MechanicalFieldConfig
 
 struct FEConfig
 {
-    // Serial mesh kept for loading; ParMesh is always created from it.
-    std::unique_ptr<mfem::Mesh> serial_mesh;
     std::unique_ptr<mfem::ParMesh> pmesh;
 
     std::unique_ptr<mfem::FiniteElementCollection> scalar_fec;

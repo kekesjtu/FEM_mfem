@@ -1,8 +1,12 @@
 #include "solver/LinearSolverFactory.hpp"
 
-#include "solver/MfemMumpsSolver.hpp"
-#include "solver/MfemPardisoSolver.hpp"
 #include "solver/MfemPcgSolver.hpp"
+#if defined(FEM_ENABLE_MUMPS)
+#include "solver/MfemMumpsSolver.hpp"
+#endif
+#if defined(FEM_ENABLE_CPARDISO)
+#include "solver/MfemPardisoSolver.hpp"
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -30,16 +34,27 @@ std::unique_ptr<ILinearSolver> CreateLinearSolver(const std::string &solver_name
         return std::make_unique<MfemPcgSolver>(rel_tol, abs_tol, max_iter, print_level,
                                                elasticity_fespace);
     }
+#if defined(FEM_ENABLE_MUMPS)
     if (normalized == "mumps")
     {
         return std::make_unique<MfemMumpsSolver>();
     }
+#endif
+#if defined(FEM_ENABLE_CPARDISO)
     if (normalized == "pardiso")
     {
         return std::make_unique<MfemPardisoSolver>();
     }
+#endif
 
     throw std::runtime_error("Unsupported solver type: '" + solver_name +
-                             "'. Supported solvers: pcg, mumps, pardiso.");
+                             "'. Supported solvers: pcg"
+#if defined(FEM_ENABLE_MUMPS)
+                             ", mumps"
+#endif
+#if defined(FEM_ENABLE_CPARDISO)
+                             ", pardiso"
+#endif
+                             ".");
 }
 }  // namespace fem::solver

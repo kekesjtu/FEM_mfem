@@ -20,12 +20,13 @@ class ResultExporter
                       mfem::ParGridFunction &gf, const std::string &txt_prefix = "", int cycle = 0,
                       double time = 0.0);
 
-    void ExportTransient(mfem::ParFiniteElementSpace &scalar_fespace,
-                         mfem::ParFiniteElementSpace &vector_fespace,
-                         const std::vector<double> &times,
-                         const std::vector<mfem::Vector> &voltages,
-                         const std::vector<mfem::Vector> &temperatures,
-                         const std::vector<mfem::Vector> &displacements);
+    /// Write transient snapshots and release each field vector after it has
+    /// been saved and gathered for text output.
+    void ExportTransient(mfem::ParFiniteElementSpace *scalar_fespace,
+                         mfem::ParFiniteElementSpace *vector_fespace,
+                         const std::vector<double> &times, std::vector<mfem::Vector> &voltages,
+                         std::vector<mfem::Vector> &temperatures,
+                         std::vector<mfem::Vector> &displacements);
 
   private:
     std::string output_dir_;

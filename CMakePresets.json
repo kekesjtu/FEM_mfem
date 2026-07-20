@@ -72,25 +72,25 @@
       "name": "build-linux-bundled-debug",
       "displayName": "Build Linux/WSL Bundled MFEM (Debug)",
       "configurePreset": "linux-bundled-debug",
-      "targets": ["my_fem"]
+      "targets": ["FEM_solution"]
     },
     {
       "name": "build-linux-system-debug",
       "displayName": "Build Linux/WSL System MFEM (Debug)",
       "configurePreset": "linux-system-debug",
-      "targets": ["my_fem"]
+      "targets": ["FEM_solution"]
     },
     {
       "name": "build-linux-bundled-release",
       "displayName": "Build Linux/WSL Bundled MFEM (Release)",
       "configurePreset": "linux-bundled-release",
-      "targets": ["my_fem"]
+      "targets": ["FEM_solution"]
     },
     {
       "name": "build-linux-system-release",
       "displayName": "Build Linux/WSL System MFEM (Release)",
       "configurePreset": "linux-system-release",
-      "targets": ["my_fem"]
+      "targets": ["FEM_solution"]
     }
   ]
 }

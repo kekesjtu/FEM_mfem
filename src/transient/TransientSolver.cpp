@@ -71,8 +71,8 @@ void TransientSolver::SolveTransient()
     mfem::Vector T_nm2_true(N_true);  // T^{n-2}
     T_nm1_true = 0.0;
     T_nm2_true = 0.0;
-    double dt_prev = 0.0; //T^{n} - T^{n-1} time step size
-    double dt_prev2 = 0.0; //T^{n-1} - T^{n-2} time step size
+    double dt_prev = 0.0;   // T^{n} - T^{n-1} time step size
+    double dt_prev2 = 0.0;  // T^{n-1} - T^{n-2} time step size
     int history_depth = 0;  // 0=cold start, 1=linear pred, 2+=quad pred+BDF2
 
     // ================================================================
@@ -378,8 +378,13 @@ void TransientSolver::ExportTransientResults(std::vector<TransientSnapshot> snap
 
     if (!snapshots.empty())
     {
-        exporter.ExportTransient(config_.fe.GetScalarFESpace(), config_.fe.GetVectorFESpace(),
-                                 times, voltages, temperatures, displacements);
+        auto *scalar_fespace = (config_.HasElectricField() || config_.HasThermalField())
+                                   ? &config_.fe.GetScalarFESpace()
+                                   : nullptr;
+        auto *vector_fespace =
+            config_.HasMechanicalField() ? &config_.fe.GetVectorFESpace() : nullptr;
+        exporter.ExportTransient(scalar_fespace, vector_fespace, times, voltages, temperatures,
+                                 displacements);
     }
 
     logger->info("Transient results exported to: {}", out_dir);

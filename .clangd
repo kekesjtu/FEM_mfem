@@ -1,31 +1,36 @@
-# clangd 配置文件
+# clangd 项目配置
 # 参考文档: https://clangd.llvm.org/config
 
 CompileFlags:
-  # 显式设置编译数据库路径
-  CompilationDatabase: build/linux-release
+  # 与 CMakePresets.json 中当前使用的预设保持一致。
+  CompilationDatabase: build/linux-bundled-release
   Add:
-    - -std=c++17
-    - -DMUPARSER_STATIC
-    - -Wno-vla-extension
+    # mpicxx 的隐式头文件路径不会展开到 compile_commands.json 中。
+    - -isystem
+    - /usr/lib/x86_64-linux-gnu/openmpi/include
+    - -isystem
+    - /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi
+    # MFEM 启用 OpenMP 后会包含 GCC 提供的 omp.h。
     - -isystem
     - /usr/lib/gcc/x86_64-linux-gnu/13/include
+    - -DMUPARSER_STATIC
+    - -Wno-vla-extension
   Remove:
-    # 移除 clang 不支持的 GCC 特定选项
-    - -fdiagnostics-color=always
-    - -fopenmp
+    # 颜色输出参数对 clangd 无用；通配符同时覆盖 auto/always 等取值。
+    - -fdiagnostics-color=*
+
 Diagnostics:
-  # 启用 clang-tidy 检查
   ClangTidy:
     Add:
-      - modernize-*
       - bugprone-*
       - performance-*
+      - modernize-*
     Remove:
       - modernize-use-trailing-return-type
       - readability-magic-numbers
       - readability-identifier-length
-
+    # 仅运行已确认快速的检查，降低编辑期间的延迟。
+    FastCheckFilter: Strict
   UnusedIncludes: Strict
 
 InlayHints:
@@ -41,7 +46,10 @@ Completion:
   AllScopes: true
 
 ---
+# 第三方源码无需建立后台索引，保留应用代码的完整索引能力。
 If:
-  PathMatch: .*/mfem/.*
+  PathMatch:
+    - mfem/.*
+    - build/.*/_deps/.*
 Index:
   Background: Skip

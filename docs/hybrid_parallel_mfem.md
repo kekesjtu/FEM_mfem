@@ -289,7 +289,7 @@ Assembler
 
 ### 6.1 CMake
 
-当前 `CMakeLists.txt` 已查找 OpenMP，把 `OpenMP::OpenMP_CXX` 链接到 `my_fem`，并显式设置：
+当前 `CMakeLists.txt` 已查找 OpenMP，把 `OpenMP::OpenMP_CXX` 链接到 `fem_core`，并显式设置：
 
 ```cmake
 set(MFEM_THREAD_SAFE ON CACHE BOOL "Enable thread-safe MFEM finite element kernels" FORCE)

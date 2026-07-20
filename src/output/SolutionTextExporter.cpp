@@ -4,7 +4,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace fem::output
@@ -16,6 +18,13 @@ struct VertexSampleLocation
 {
     int element_id = -1;
     int local_vertex_id = -1;
+};
+
+struct VertexCoord
+{
+    double x = 0.0;
+    double y = 0.0;
+    double z = 0.0;
 };
 
 std::vector<VertexSampleLocation> BuildVertexSampleLocations(mfem::Mesh &mesh)
@@ -136,93 +145,41 @@ void SolutionTextExporter::ExportVectorNodalTxt(const std::string &txt_path,
     }
 }
 
-void SolutionTextExporter::ExportTransientNodalTxt(const std::string &txt_path, mfem::Mesh &mesh,
-                                                   mfem::FiniteElementSpace &scalar_fespace,
-                                                   mfem::FiniteElementSpace &vector_fespace,
-                                                   const std::vector<double> &times,
-                                                   const std::vector<mfem::Vector> &voltages,
-                                                   const std::vector<mfem::Vector> &temperatures,
-                                                   const std::vector<mfem::Vector> &displacements)
+struct TransientNodalTextWriter::Impl
 {
-    const int nsnaps = static_cast<int>(times.size());
-    const int nv = mesh.GetNV();
-    const int dim = mesh.Dimension();
-    const bool has_v = !voltages.empty() && voltages[0].Size() > 0;
-    const bool has_t = !temperatures.empty() && temperatures[0].Size() > 0;
-    const bool has_d = !displacements.empty() && displacements[0].Size() > 0;
-    const int fields_per_snap = (has_v ? 1 : 0) + (has_t ? 1 : 0) + (has_d ? 1 : 0);
-
-    const auto locations = BuildVertexSampleLocations(mesh);
-
-    // Create reusable temporary GridFunctions (one per field type)
-    std::unique_ptr<mfem::GridFunction> v_gf, t_gf, d_gf;
-    if (has_v)
-        v_gf = std::make_unique<mfem::GridFunction>(&scalar_fespace);
-    if (has_t)
-        t_gf = std::make_unique<mfem::GridFunction>(&scalar_fespace);
-    if (has_d)
-        d_gf = std::make_unique<mfem::GridFunction>(&vector_fespace);
-
-    std::filesystem::create_directories(std::filesystem::path(txt_path).parent_path());
-    std::ofstream out(txt_path);
-    if (!out)
-        throw std::runtime_error("Failed to open output txt file: " + txt_path);
-    out << std::setprecision(17);
-
-    // Header
-    out << "% Model:              FEM_mfem\n"
-        << "% Dimension:          " << dim << "\n"
-        << "% Nodes:              " << nv << "\n"
-        << "% Time steps:         " << nsnaps << "\n"
-        << "% Description:        Electric potential, Temperature, Displacement magnitude\n"
-        << "% x                       y                        z                        ";
-    for (int s = 0; s < nsnaps; ++s)
+    Impl(std::string path, mfem::Mesh &serial_mesh, const std::vector<double> &snapshot_times,
+         bool voltage_enabled, bool temperature_enabled, bool displacement_enabled)
+        : txt_path(std::move(path)),
+          mesh(serial_mesh),
+          times(snapshot_times),
+          has_voltage(voltage_enabled),
+          has_temperature(temperature_enabled),
+          has_displacement(displacement_enabled),
+          nv(mesh.GetNV()),
+          dim(mesh.Dimension()),
+          locations(BuildVertexSampleLocations(mesh)),
+          coords(static_cast<std::size_t>(nv))
     {
-        if (has_v)
-            out << "V @ t=" << times[s] << "  ";
-        if (has_t)
-            out << "T @ t=" << times[s] << "  ";
-        if (has_d)
-            out << "disp @ t=" << times[s] << "  ";
-    }
-    out << "\n";
+        int next_offset = 0;
+        if (has_voltage)
+            voltage_offset = next_offset++;
+        if (has_temperature)
+            temperature_offset = next_offset++;
+        if (has_displacement)
+            displacement_offset = next_offset++;
+        nfields = next_offset;
 
-    // Data — iterate snapshot-major to minimize GF reassignment
-    mfem::Vector vec(dim);
-    mfem::Vector pt(dim);
+        const auto snapshot_count = times.size();
+        const auto vertex_count = static_cast<std::size_t>(nv);
+        const auto field_count = static_cast<std::size_t>(nfields);
+        if (field_count > 0 && vertex_count > 0 &&
+            snapshot_count > std::numeric_limits<std::size_t>::max() / vertex_count / field_count)
+        {
+            throw std::length_error("Transient nodal output buffer size overflow");
+        }
+        data.resize(snapshot_count * vertex_count * field_count);
 
-    // Pre-compute vertex coordinates
-    struct VertexCoord
-    {
-        double x, y, z;
-    };
-    std::vector<VertexCoord> coords(nv);
-    for (int v = 0; v < nv; ++v)
-    {
-        const auto &loc = locations[v];
-        if (loc.element_id < 0)
-            continue;
-        auto *tr = mesh.GetElementTransformation(loc.element_id);
-        auto ip = VertexIntegrationPoint(mesh, loc.element_id, loc.local_vertex_id);
-        tr->SetIntPoint(&ip);
-        tr->Transform(ip, pt);
-        coords[v] = {pt(0), pt(1), dim > 2 ? pt(2) : 0.0};
-    }
-
-    // Pre-evaluate all field values: [snap][field_values_per_vertex]
-    // Store as flat vectors to avoid per-vertex GF reassignment
-    const int nfields = fields_per_snap;
-    std::vector<std::vector<double>> snap_data(nsnaps);
-    for (int s = 0; s < nsnaps; ++s)
-    {
-        snap_data[s].resize(nv * nfields);
-        if (has_v)
-            *v_gf = voltages[s];
-        if (has_t)
-            *t_gf = temperatures[s];
-        if (has_d)
-            *d_gf = displacements[s];
-
+        mfem::Vector point(dim);
         for (int v = 0; v < nv; ++v)
         {
             const auto &loc = locations[v];
@@ -231,37 +188,158 @@ void SolutionTextExporter::ExportTransientNodalTxt(const std::string &txt_path, 
             auto *tr = mesh.GetElementTransformation(loc.element_id);
             auto ip = VertexIntegrationPoint(mesh, loc.element_id, loc.local_vertex_id);
             tr->SetIntPoint(&ip);
-
-            int fi = 0;
-            if (has_v)
-                snap_data[s][v * nfields + fi++] = v_gf->GetValue(*tr, ip);
-            if (has_t)
-                snap_data[s][v * nfields + fi++] = t_gf->GetValue(*tr, ip);
-            if (has_d)
-            {
-                d_gf->GetVectorValue(*tr, ip, vec);
-                double mag2 = 0.0;
-                for (int d = 0; d < dim; ++d)
-                    mag2 += vec(d) * vec(d);
-                snap_data[s][v * nfields + fi++] = std::sqrt(mag2);
-            }
+            tr->Transform(ip, point);
+            coords[static_cast<std::size_t>(v)] = {point(0), point(1), dim > 2 ? point(2) : 0.0};
         }
     }
 
-    // Write rows
-    for (int v = 0; v < nv; ++v)
+    std::size_t DataIndex(std::size_t snapshot_index, int vertex, int field_offset) const
     {
-        const auto &loc = locations[v];
-        if (loc.element_id < 0)
-            continue;
-        out << coords[v].x << " " << coords[v].y << " " << coords[v].z;
-        for (int s = 0; s < nsnaps; ++s)
+        return (snapshot_index * static_cast<std::size_t>(nv) + static_cast<std::size_t>(vertex)) *
+                   static_cast<std::size_t>(nfields) +
+               static_cast<std::size_t>(field_offset);
+    }
+
+    void ValidateSnapshot(std::size_t snapshot_index, int field_offset,
+                          const char *field_name) const
+    {
+        if (snapshot_index >= times.size())
+            throw std::out_of_range("Transient snapshot index is out of range");
+        if (field_offset < 0)
+            throw std::logic_error(std::string("Transient output does not contain field: ") +
+                                   field_name);
+    }
+
+    void AddScalar(std::size_t snapshot_index, const mfem::GridFunction &field, int field_offset,
+                   const char *field_name)
+    {
+        ValidateSnapshot(snapshot_index, field_offset, field_name);
+        for (int v = 0; v < nv; ++v)
         {
-            for (int fi = 0; fi < nfields; ++fi)
-                out << " " << snap_data[s][v * nfields + fi];
+            const auto &loc = locations[static_cast<std::size_t>(v)];
+            if (loc.element_id < 0)
+                continue;
+            auto *tr = mesh.GetElementTransformation(loc.element_id);
+            auto ip = VertexIntegrationPoint(mesh, loc.element_id, loc.local_vertex_id);
+            tr->SetIntPoint(&ip);
+            data[DataIndex(snapshot_index, v, field_offset)] = field.GetValue(*tr, ip);
+        }
+    }
+
+    void AddVectorMagnitude(std::size_t snapshot_index, const mfem::GridFunction &field)
+    {
+        ValidateSnapshot(snapshot_index, displacement_offset, "displacement");
+        mfem::Vector value(dim);
+        for (int v = 0; v < nv; ++v)
+        {
+            const auto &loc = locations[static_cast<std::size_t>(v)];
+            if (loc.element_id < 0)
+                continue;
+            auto *tr = mesh.GetElementTransformation(loc.element_id);
+            auto ip = VertexIntegrationPoint(mesh, loc.element_id, loc.local_vertex_id);
+            tr->SetIntPoint(&ip);
+            field.GetVectorValue(*tr, ip, value);
+
+            double magnitude_sq = 0.0;
+            for (int d = 0; d < dim; ++d)
+                magnitude_sq += value(d) * value(d);
+            data[DataIndex(snapshot_index, v, displacement_offset)] = std::sqrt(magnitude_sq);
+        }
+    }
+
+    void Write() const
+    {
+        std::filesystem::create_directories(std::filesystem::path(txt_path).parent_path());
+        std::ofstream out(txt_path);
+        if (!out)
+            throw std::runtime_error("Failed to open output txt file: " + txt_path);
+        out << std::setprecision(17);
+
+        out << "% Model:              FEM_mfem\n"
+            << "% Dimension:          " << dim << "\n"
+            << "% Nodes:              " << nv << "\n"
+            << "% Time steps:         " << times.size() << "\n"
+            << "% Description:        Electric potential, Temperature, Displacement magnitude\n"
+            << "% x                       y                        z                        ";
+        for (std::size_t s = 0; s < times.size(); ++s)
+        {
+            if (has_voltage)
+                out << "V @ t=" << times[s] << "  ";
+            if (has_temperature)
+                out << "T @ t=" << times[s] << "  ";
+            if (has_displacement)
+                out << "disp @ t=" << times[s] << "  ";
         }
         out << "\n";
+
+        for (int v = 0; v < nv; ++v)
+        {
+            const auto &loc = locations[static_cast<std::size_t>(v)];
+            if (loc.element_id < 0)
+                continue;
+            const auto &coord = coords[static_cast<std::size_t>(v)];
+            out << coord.x << " " << coord.y << " " << coord.z;
+            for (std::size_t s = 0; s < times.size(); ++s)
+            {
+                for (int field_offset = 0; field_offset < nfields; ++field_offset)
+                    out << " " << data[DataIndex(s, v, field_offset)];
+            }
+            out << "\n";
+        }
     }
+
+    std::string txt_path;
+    mfem::Mesh &mesh;
+    std::vector<double> times;
+    bool has_voltage = false;
+    bool has_temperature = false;
+    bool has_displacement = false;
+    int nv = 0;
+    int dim = 0;
+    int nfields = 0;
+    int voltage_offset = -1;
+    int temperature_offset = -1;
+    int displacement_offset = -1;
+    std::vector<VertexSampleLocation> locations;
+    std::vector<VertexCoord> coords;
+    std::vector<double> data;
+};
+
+TransientNodalTextWriter::TransientNodalTextWriter(std::string txt_path, mfem::Mesh &mesh,
+                                                   const std::vector<double> &times,
+                                                   bool has_voltage, bool has_temperature,
+                                                   bool has_displacement)
+    : impl_(std::make_unique<Impl>(std::move(txt_path), mesh, times, has_voltage, has_temperature,
+                                   has_displacement))
+{
+}
+
+TransientNodalTextWriter::~TransientNodalTextWriter() = default;
+TransientNodalTextWriter::TransientNodalTextWriter(TransientNodalTextWriter &&) noexcept = default;
+TransientNodalTextWriter &TransientNodalTextWriter::operator=(
+    TransientNodalTextWriter &&) noexcept = default;
+
+void TransientNodalTextWriter::AddVoltage(std::size_t snapshot_index,
+                                          const mfem::GridFunction &field)
+{
+    impl_->AddScalar(snapshot_index, field, impl_->voltage_offset, "voltage");
+}
+
+void TransientNodalTextWriter::AddTemperature(std::size_t snapshot_index,
+                                              const mfem::GridFunction &field)
+{
+    impl_->AddScalar(snapshot_index, field, impl_->temperature_offset, "temperature");
+}
+
+void TransientNodalTextWriter::AddDisplacement(std::size_t snapshot_index,
+                                               const mfem::GridFunction &field)
+{
+    impl_->AddVectorMagnitude(snapshot_index, field);
+}
+
+void TransientNodalTextWriter::Write() const
+{
+    impl_->Write();
 }
 
 }  // namespace fem::output

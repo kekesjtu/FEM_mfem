@@ -15,8 +15,6 @@ namespace fem::assembler
 
 struct ThermalMatrices
 {
-    std::unique_ptr<mfem::ParBilinearForm> K_bf;
-    std::unique_ptr<mfem::ParBilinearForm> C_bf;
     std::unique_ptr<mfem::HypreParMatrix> K;
     std::unique_ptr<mfem::HypreParMatrix> C;
 };

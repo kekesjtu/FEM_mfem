@@ -3,8 +3,8 @@
 #include "BCbuilder/ScalarBCBuilder.hpp"
 #include "coeff/ThermalCoeffs.hpp"
 #include "frontend/Config.hpp"
-#include "solver/ILinearSolver.hpp"
 #include "mfem.hpp"
+#include "solver/ILinearSolver.hpp"
 
 #include <memory>
 
@@ -65,8 +65,6 @@ class ThermalFieldSolver
     BCbuilder::ScalarBCData cached_bc_;
 
     bool matrices_cached_ = false;
-    std::unique_ptr<mfem::ParBilinearForm> K_bf_;
-    std::unique_ptr<mfem::ParBilinearForm> C_bf_;
     std::unique_ptr<mfem::HypreParMatrix> K_;
     std::unique_ptr<mfem::HypreParMatrix> C_;
 

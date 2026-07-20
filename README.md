@@ -200,7 +200,8 @@ $$
 | `mumps` | `mfem::MUMPSSolver` | 并行直接求解，当前设置为 SPD 矩阵类型 |
 | `pardiso` | `mfem::CPardisoSolver` | MKL Cluster PARDISO，并行直接求解 |
 
-仓库中保留了 `MfemUmfpackSolver` 包装类，但工厂函数当前不暴露 `umfpack`，且该实现会抛出“串行 UMFPACK 不支持并行配置”的异常。配置文件中请使用 `pcg`、`mumps` 或 `pardiso`。
+配置文件中可使用 `pcg`、`mumps` 或 `pardiso`。构建时可通过
+`FEM_ENABLE_MUMPS` 与 `FEM_ENABLE_CPARDISO` 分别关闭两个直接求解器后端；默认均启用。
 
 `pcg` 当前使用 MFEM 的 `CGSolver` 做外层 Krylov 迭代，预条件子是 `HypreBoomerAMG`。对力学场，AMG 当前调用 `SetSystemsOptions(dim, byNODES)` 配置向量系统；此前测试过 `SetElasticityOptions()`，小算例可运行，但在 busbar2 力学批量求解上收敛明显更慢，因此当前默认保留 `SetSystemsOptions()`。
 
@@ -484,7 +485,7 @@ cmake --build --preset build-linux-bundled-release -j$(nproc)
 也可以直接构建 CMake 目标名：
 
 ```bash
-cmake --build build/linux-bundled-release --target my_fem -j$(nproc)
+cmake --build build/linux-bundled-release --target FEM_solution -j$(nproc)
 ```
 
 最终可执行文件名是 `FEM_solution`，位于对应 build 目录的 `bin/` 下。
@@ -642,7 +643,6 @@ python3 tools/compare_time_curves.py \
 
 - 热场 `diffusion`、`rho_cp` 与基础热源当前按常数读取；温度相关热导率尚未接入热场系数构造。
 - 静电场材料电导率支持表达式，常用变量是 `T`；时变电压边界表达式通过 `value` 字符串提供，当前只传入时间 `t`。
-- 当前瞬态主路径面向含热场的问题；已有示例均为 E+T+M。若要做纯热瞬态或 E+T 瞬态，需要先补齐导出阶段对缺失 vector FE space 的保护。
-- `umfpack` 包装类保留但不属于当前可配置求解器。
+- 当前瞬态主路径面向含热场的问题；导出阶段会按实际启用的场创建标量或矢量有限元空间，不再强制要求机械场。
 - 当前没有 MPI 子通信器分组、场间任务并发、GPU/Partial Assembly 主路径。
 - 线性代数求解器当前仍以 MPI 并行为主；装配阶段已经有 rank 内 OpenMP，HYPRE AMG 与 MKL CPARDISO 的求解器内部 OpenMP 还需要对应的底层库构建和链接配置。

@@ -85,8 +85,6 @@ void ThermalFieldSolver::CacheMatrices()
     auto m = assembler::ThermalAssembler::AssembleMatrices(config_.fe.GetScalarFESpace(), coeffs_,
                                                            cached_bc_);
 
-    K_bf_ = std::move(m.K_bf);
-    C_bf_ = std::move(m.C_bf);
     K_ = std::move(m.K);
     C_ = std::move(m.C);
 

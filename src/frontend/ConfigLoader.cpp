@@ -376,23 +376,25 @@ void ConfigLoader::BuildFE()
     auto logger = fem::log::Get();
     const auto &sim = config_.simulation;
 
-    // Load serial mesh first
+    // The serial mesh is only needed while constructing ParMesh. Keeping it in
+    // ProjectConfig would replicate the full input mesh on every MPI rank for
+    // the lifetime of the simulation.
     logger->info("Loading mesh from: {}", sim.mesh_path);
-    config_.fe.serial_mesh = std::make_unique<mfem::Mesh>(sim.mesh_path.c_str(), 1, 1);
+    auto serial_mesh = std::make_unique<mfem::Mesh>(sim.mesh_path.c_str(), 1, 1);
 
     for (int i = 0; i < sim.uniform_refinement_levels; ++i)
     {
-        config_.fe.serial_mesh->UniformRefinement();
+        serial_mesh->UniformRefinement();
     }
 
-    const int dim = config_.fe.serial_mesh->Dimension();
+    const int dim = serial_mesh->Dimension();
     logger->info("Mesh loaded: dim={}, elements={}, vertices={}, bdr_elements={}", dim,
-                 config_.fe.serial_mesh->GetNE(), config_.fe.serial_mesh->GetNV(),
-                 config_.fe.serial_mesh->GetNBE());
+                 serial_mesh->GetNE(), serial_mesh->GetNV(), serial_mesh->GetNBE());
 
     // Always create ParMesh (works with np=1 too)
     logger->info("Execution mode: parallel (MPI ranks={})", mfem::Mpi::WorldSize());
-    config_.fe.pmesh = std::make_unique<mfem::ParMesh>(MPI_COMM_WORLD, *config_.fe.serial_mesh);
+    config_.fe.pmesh = std::make_unique<mfem::ParMesh>(MPI_COMM_WORLD, *serial_mesh);
+    serial_mesh.reset();
     logger->info("ParMesh created: local elements={}", config_.fe.pmesh->GetNE());
 
     if (config_.HasElectricField() || config_.HasThermalField())

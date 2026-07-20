@@ -19,7 +19,7 @@ struct TransientSnapshot
 
 /// Predictor-corrector adaptive time stepper with order selection and WRMS error control.
 /// Handles backward-Euler / BDF2 time integration, Picard coupling
-/// per step, streaming snapshot output, and export.
+/// per step, output-snapshot interpolation, and export.
 class TransientSolver
 {
   public:

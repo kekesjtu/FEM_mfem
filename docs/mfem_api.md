@@ -302,7 +302,6 @@ auto par_fespace = std::make_unique<mfem::ParFiniteElementSpace>(pmesh, fec);
 
 ```cpp
 struct FEConfig {
-    std::unique_ptr<mfem::Mesh> serial_mesh;                    // 仅用于加载/构建
     std::unique_ptr<mfem::ParMesh> pmesh;                       // 并行网格
     std::unique_ptr<mfem::FiniteElementCollection> scalar_fec;
     std::unique_ptr<mfem::ParFiniteElementSpace> scalar_fespace; // 标量并行空间
@@ -314,6 +313,9 @@ struct FEConfig {
     mfem::ParFiniteElementSpace &GetVectorFESpace() { return *vector_fespace; }
 };
 ```
+
+输入串行网格只在 `BuildFE()` 内作为局部对象存在；`ParMesh` 完成分区构造后立即释放，
+避免每个 MPI rank 在整个求解周期中额外保留一份完整网格。
 
 后续所有 Solver 和 Assembler 直接使用 `ParFiniteElementSpace&`、`ParGridFunction`、`ParBilinearForm`、`ParLinearForm`，
 无需 `dynamic_cast` 或串/并行分支判断。即使 `np=1`，同样走 `ParMesh` + `ParFiniteElementSpace` 路径。
@@ -598,12 +600,14 @@ class ILinearSolver {
 
 ### 10.2 可用求解器
 
-| 类                  | 底层                     | 适用模式  | 特性                |
-| ------------------- | ------------------------ | --------- | ------------------- |
-| `MfemPcgSolver`     | MFEM CGSolver + 预条件器 | 串行/并行 | 迭代，对称正定      |
-| `MfemPardisoSolver` | MKL PARDISO              | 串行      | 直接法，LU 分解缓存 |
-| `MfemMumpsSolver`   | MUMPS                    | 串行/并行 | 直接法，分布式分解  |
-| `MfemUmfpackSolver` | UMFPACK                  | 串行      | 直接法              |
+| 类                  | 底层                     | 适用模式  | 特性                    |
+| ------------------- | ------------------------ | --------- | ----------------------- |
+| `MfemPcgSolver`     | MFEM CGSolver + 预条件器 | 串行/并行 | 迭代，对称正定          |
+| `MfemPardisoSolver` | MKL Cluster PARDISO      | MPI 并行  | 直接法，分布式分解缓存  |
+| `MfemMumpsSolver`   | MUMPS                    | MPI 并行  | 直接法，分布式分解缓存  |
+
+MUMPS 与 Cluster PARDISO 后端分别由 `FEM_ENABLE_MUMPS` 和
+`FEM_ENABLE_CPARDISO` 控制；关闭某个后端后，工厂函数不会接受对应的求解器名称。
 
 ### 10.3 求解器工厂
 
@@ -798,6 +802,9 @@ rank 0 额外写出 `.pvtu` 汇总文件。ParaView 可直接打开 `.pvtu` 查�
 `ParMesh::GetSerialMesh(0)` + `ParGridFunction::GetSerialGridFunction(0, serial_mesh)` 
 将并行数据收集到 rank 0 的串行对象上，再调用 `SolutionTextExporter` 导出。
 这使得 txt 导出在任意 `np` 下均可工作。
+
+瞬态导出按时间片依次写入 ParaView，并逐片收集、采样文本所需的顶点值；每片完成后立即释放原始场向量，
+不会同时保留所有时间片对应的串行 `GridFunction` 副本。
 
 关键 MFEM 接口调用链：
 ```

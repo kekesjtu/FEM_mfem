@@ -1,7 +1,6 @@
 #include "output/ParaviewExporter.hpp"
 
 #include <filesystem>
-#include <stdexcept>
 
 namespace fem::output
 {
@@ -26,38 +25,25 @@ void ParaviewExporter::Save(const std::string &collection_name, const std::strin
     collection.Save();
 }
 
-void ParaviewExporter::SaveTransient(const std::string &collection_name,
-                                     const std::string &field_name, mfem::Mesh &mesh,
-                                     mfem::FiniteElementSpace &fespace,
-                                     const std::vector<mfem::Vector> &snapshots,
-                                     const std::vector<double> &times) const
+ParaviewTimeSeries::ParaviewTimeSeries(const std::string &output_dir,
+                                       const std::string &collection_name,
+                                       const std::string &field_name, mfem::Mesh &mesh,
+                                       mfem::FiniteElementSpace &fespace)
+    : field_(&fespace), collection_(collection_name, &mesh)
 {
-    if (snapshots.size() != times.size())
-    {
-        throw std::runtime_error(
-            "ParaviewExporter::SaveTransient requires snapshots/time size match.");
-    }
-    if (snapshots.empty())
-    {
-        return;
-    }
+    std::filesystem::create_directories(output_dir);
+    collection_.SetPrefixPath(output_dir);
+    collection_.SetLevelsOfDetail(1);
+    collection_.SetHighOrderOutput(true);
+    collection_.SetDataFormat(mfem::VTKFormat::BINARY);
+    collection_.RegisterField(field_name, &field_);
+}
 
-    std::filesystem::create_directories(output_dir_);
-
-    mfem::GridFunction gf(&fespace);
-    mfem::ParaViewDataCollection collection(collection_name, &mesh);
-    collection.SetPrefixPath(output_dir_);
-    collection.SetLevelsOfDetail(1);
-    collection.SetHighOrderOutput(true);
-    collection.SetDataFormat(mfem::VTKFormat::BINARY);
-    collection.RegisterField(field_name, &gf);
-
-    for (size_t i = 0; i < snapshots.size(); ++i)
-    {
-        gf = snapshots[i];
-        collection.SetCycle(static_cast<int>(i));
-        collection.SetTime(times[i]);
-        collection.Save();
-    }
+void ParaviewTimeSeries::SaveSnapshot(const mfem::Vector &snapshot, int cycle, double time)
+{
+    field_ = snapshot;
+    collection_.SetCycle(cycle);
+    collection_.SetTime(time);
+    collection_.Save();
 }
 }  // namespace fem::output
