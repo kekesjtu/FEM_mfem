@@ -57,7 +57,7 @@ mfem::Mpi::Init(argc, argv, required, &provided);
 
 ```bash
 env OMP_NUM_THREADS=1 OMP_DYNAMIC=false \
-mpirun -np 1 ./build/linux-release/bin/FEM_solution \
+mpirun -np 1 ./build/linux-bundled-release/bin/FEM_solution \
   configs/busbar_etm_nonlinear_transient_vbc.json
 ```
 
@@ -312,7 +312,7 @@ export OMP_NUM_THREADS=4
 export OMP_DYNAMIC=false
 export OMP_PROC_BIND=close
 export OMP_PLACES=cores
-mpirun -np 2 ./build/linux-release/bin/FEM_solution configs/busbar_etm_nonlinear_transient_vbc.json
+mpirun -np 2 ./build/linux-bundled-release/bin/FEM_solution configs/busbar_etm_nonlinear_transient_vbc.json
 ```
 
 资源分配原则：

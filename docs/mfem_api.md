@@ -54,10 +54,10 @@ main.cpp
 运行命令示例：
 ```bash
 # 单进程
-mpirun -np 1 ./build/linux-release/bin/FEM_solution configs/busbar_electro_thermal_oneway.json
+mpirun -np 1 ./build/linux-bundled-release/bin/FEM_solution configs/busbar_electro_thermal_oneway.json
 
 # 并行（2 个进程）
-mpirun -np 2 ./build/linux-release/bin/FEM_solution configs/busbar_electro_thermal_oneway.json
+mpirun -np 2 ./build/linux-bundled-release/bin/FEM_solution configs/busbar_electro_thermal_oneway.json
 ```
 
 ### 1.3 MPI 架构示意图

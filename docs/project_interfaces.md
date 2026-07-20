@@ -20,7 +20,7 @@ FEM_solution [config_path]
 
 ```bash
 env OMP_NUM_THREADS=4 OMP_DYNAMIC=false \
-mpirun -np 4 ./build/linux-release/bin/FEM_solution \
+mpirun -np 4 ./build/linux-bundled-release/bin/FEM_solution \
   configs/busbar_etm_nonlinear_transient_vbc.json
 ```
 
@@ -54,7 +54,7 @@ mpirun -np 4 ./build/linux-release/bin/FEM_solution \
 
 ```bash
 env OMP_NUM_THREADS=1 OMP_DYNAMIC=false \
-mpirun -np 1 ./build/linux-release/bin/FEM_solution \
+mpirun -np 1 ./build/linux-bundled-release/bin/FEM_solution \
   configs/busbar_etm_nonlinear_transient_vbc.json
 ```
 

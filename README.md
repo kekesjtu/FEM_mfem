@@ -460,31 +460,31 @@ $$
 
 | 依赖 | 说明 |
 | ---- | ---- |
-| CMake | `CMakeLists.txt` 要求 3.16；`CMakePresets.json` 要求 3.23 |
-| MPI | Linux preset 使用 `mpicc` / `mpicxx` |
+| CMake | `CMakeLists.txt` 与 `CMakePresets.json` 均要求 3.23 |
+| MPI | Linux preset 使用 `mpicc` / `mpicxx` / `mpif90` |
 | MFEM | 默认使用仓库内 `mfem/`，也可切换系统安装版 |
 | HYPRE / METIS | MFEM MPI 路径需要 |
-| MUMPS / MKL CPARDISO | 直接求解器可选但当前 CMake 默认尝试开启 |
+| MUMPS / MKL CPARDISO | 当前构建启用的并行直接求解器后端 |
 | spdlog / nlohmann_json / muparser | 优先 `find_package`，找不到时通过 `FetchContent` 获取 |
 
 ### 5.2 Debug 构建
 
 ```bash
-cmake --preset mfem-bundled-linux-debug
-cmake --build build/linux-debug --target my_fem -j$(nproc)
+cmake --preset linux-bundled-debug
+cmake --build --preset build-linux-bundled-debug -j$(nproc)
 ```
 
 ### 5.3 Release 构建
 
 ```bash
-cmake --preset linux-release
-cmake --build build/linux-release --target my_fem -j$(nproc)
+cmake --preset linux-bundled-release
+cmake --build --preset build-linux-bundled-release -j$(nproc)
 ```
 
 也可以直接构建 CMake 目标名：
 
 ```bash
-cmake --build build/linux-release --target my_fem -j$(nproc)
+cmake --build build/linux-bundled-release --target my_fem -j$(nproc)
 ```
 
 最终可执行文件名是 `FEM_solution`，位于对应 build 目录的 `bin/` 下。
@@ -495,7 +495,7 @@ cmake --build build/linux-release --target my_fem -j$(nproc)
 
 ```bash
 env OMP_NUM_THREADS=1 OMP_DYNAMIC=false \
-mpirun -np 4 ./build/linux-release/bin/FEM_solution \
+mpirun -np 4 ./build/linux-bundled-release/bin/FEM_solution \
   configs/busbar_electro_thermal_oneway.json
 ```
 
@@ -503,7 +503,7 @@ mpirun -np 4 ./build/linux-release/bin/FEM_solution \
 
 ```bash
 env OMP_NUM_THREADS=4 OMP_DYNAMIC=false OMP_PROC_BIND=close OMP_PLACES=cores \
-mpirun -np 2 ./build/linux-release/bin/FEM_solution \
+mpirun -np 2 ./build/linux-bundled-release/bin/FEM_solution \
   configs/busbar_electro_thermal_oneway.json
 ```
 
@@ -512,14 +512,14 @@ mpirun -np 2 ./build/linux-release/bin/FEM_solution \
 ### 6.2 稳态电热 Picard
 
 ```bash
-mpirun -np 4 ./build/linux-release/bin/FEM_solution \
+mpirun -np 4 ./build/linux-bundled-release/bin/FEM_solution \
   configs/busbar_electro_thermal_picard.json
 ```
 
 ### 6.3 瞬态电热力，自适应步长与时变电压
 
 ```bash
-mpirun -np 4 ./build/linux-release/bin/FEM_solution \
+mpirun -np 4 ./build/linux-bundled-release/bin/FEM_solution \
   configs/busbar_etm_nonlinear_transient_vbc.json
 ```
 
@@ -533,7 +533,7 @@ mpirun -np 4 ./build/linux-release/bin/FEM_solution \
 ### 6.4 稳态热-力耦合
 
 ```bash
-mpirun -np 4 ./build/linux-release/bin/FEM_solution \
+mpirun -np 4 ./build/linux-bundled-release/bin/FEM_solution \
   configs/bipolar_thermo_mechanical.json
 ```
 
@@ -564,6 +564,11 @@ FEM_mfem/
 ├── main.cpp
 ├── CMakeLists.txt
 ├── CMakePresets.json
+├── cmake/
+│   ├── FemProjectSettings.cmake # C++ 标准、告警和输出目录
+│   ├── FemDependencies.cmake    # OpenMP 与通用第三方包
+│   ├── FemMfem.cmake            # MPI、MFEM 和数值求解器
+│   └── FemTarget.cmake          # 应用源码、头文件和链接关系
 ├── include/
 │   ├── app/              # Application 顶层入口
 │   ├── frontend/         # Config, ConfigLoader, Expression

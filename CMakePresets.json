@@ -7,108 +7,90 @@
   },
   "configurePresets": [
     {
-      "name": "base-linux-debug",
+      "name": "linux-base",
       "hidden": true,
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/linux-debug",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_C_COMPILER": "/usr/bin/mpicc",
-        "CMAKE_CXX_COMPILER": "/usr/bin/mpicxx",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
-      }
-    },
-    {
-      "name": "base-mingw-debug",
-      "hidden": true,
-      "generator": "MinGW Makefiles",
-      "binaryDir": "${sourceDir}/build/mingw-debug",
+      "binaryDir": "${sourceDir}/build/${presetName}",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
-        "rhs": "Windows"
+        "rhs": "Linux"
       },
       "cacheVariables": {
+        "CMAKE_C_COMPILER": "/usr/bin/mpicc",
+        "CMAKE_CXX_COMPILER": "/usr/bin/mpicxx",
+        "CMAKE_Fortran_COMPILER": "/usr/bin/mpif90",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}"
+      }
+    },
+    {
+      "name": "linux-bundled-debug",
+      "displayName": "Linux/WSL Bundled MFEM (Debug)",
+      "description": "Build the workspace MFEM source and application in Debug mode",
+      "inherits": "linux-base",
+      "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_C_COMPILER": "E:/msys64/ucrt64/bin/gcc.exe",
-        "CMAKE_CXX_COMPILER": "E:/msys64/ucrt64/bin/g++.exe",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
-      }
-    },
-    {
-      "name": "mfem-bundled-linux-debug",
-      "displayName": "MFEM Bundled (Linux/WSL Debug)",
-      "description": "Use workspace mfem/ source via add_subdirectory on Linux/WSL",
-      "inherits": "base-linux-debug",
-      "cacheVariables": {
         "FEM_USE_SYSTEM_MFEM": "OFF"
       }
     },
     {
-      "name": "mfem-system-linux-debug",
-      "displayName": "MFEM System (Linux/WSL Debug)",
-      "description": "Use installed MFEM package via find_package(mfem) on Linux/WSL",
-      "inherits": "base-linux-debug",
+      "name": "linux-system-debug",
+      "displayName": "Linux/WSL System MFEM (Debug)",
+      "description": "Use an installed MFEM package and build the application in Debug mode",
+      "inherits": "linux-base",
       "cacheVariables": {
-        "FEM_USE_SYSTEM_MFEM": "ON",
-        "MFEM_USE_MPI": "ON",
-        "MFEM_USE_METIS": "ON",
-        "MFEM_USE_SUITESPARSE": "ON",
-        "MFEM_DIR": "$env{MFEM_DIR}"
-      }
-    },
-    {
-      "name": "mfem-bundled-debug",
-      "displayName": "MFEM Bundled (Debug)",
-      "description": "Use workspace mfem/ source via add_subdirectory",
-      "inherits": "base-mingw-debug",
-      "cacheVariables": {
-        "FEM_USE_SYSTEM_MFEM": "OFF"
-      }
-    },
-    {
-      "name": "mfem-system-debug",
-      "displayName": "MFEM System (Debug)",
-      "description": "Use installed MFEM package via find_package(mfem)",
-      "inherits": "base-mingw-debug",
-      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
         "FEM_USE_SYSTEM_MFEM": "ON",
         "MFEM_DIR": "$env{MFEM_DIR}"
       }
     },
     {
-      "name": "linux-release",
-      "displayName": "MFEM System (Release)",
-      "description": "设置 Ninja 生成器、版本和安装目录",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/${presetName}",
+      "name": "linux-bundled-release",
+      "displayName": "Linux/WSL Bundled MFEM (Release)",
+      "description": "Build the workspace MFEM source and application in Release mode",
+      "inherits": "linux-base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_TOOLCHAIN_FILE": "",
-        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}"
+        "FEM_USE_SYSTEM_MFEM": "OFF"
+      }
+    },
+    {
+      "name": "linux-system-release",
+      "displayName": "Linux/WSL System MFEM (Release)",
+      "description": "Use an installed MFEM package and build the application in Release mode",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "FEM_USE_SYSTEM_MFEM": "ON",
+        "MFEM_DIR": "$env{MFEM_DIR}"
       }
     }
   ],
   "buildPresets": [
     {
-      "name": "build-bundled-linux-debug",
-      "displayName": "Build Bundled Linux/WSL Debug",
-      "configurePreset": "mfem-bundled-linux-debug"
+      "name": "build-linux-bundled-debug",
+      "displayName": "Build Linux/WSL Bundled MFEM (Debug)",
+      "configurePreset": "linux-bundled-debug",
+      "targets": ["my_fem"]
     },
     {
-      "name": "build-system-linux-debug",
-      "displayName": "Build System Linux/WSL Debug",
-      "configurePreset": "mfem-system-linux-debug"
+      "name": "build-linux-system-debug",
+      "displayName": "Build Linux/WSL System MFEM (Debug)",
+      "configurePreset": "linux-system-debug",
+      "targets": ["my_fem"]
     },
     {
-      "name": "build-bundled-debug",
-      "displayName": "Build Bundled Debug",
-      "configurePreset": "mfem-bundled-debug"
+      "name": "build-linux-bundled-release",
+      "displayName": "Build Linux/WSL Bundled MFEM (Release)",
+      "configurePreset": "linux-bundled-release",
+      "targets": ["my_fem"]
     },
     {
-      "name": "build-system-debug",
-      "displayName": "Build System Debug",
-      "configurePreset": "mfem-system-debug"
+      "name": "build-linux-system-release",
+      "displayName": "Build Linux/WSL System MFEM (Release)",
+      "configurePreset": "linux-system-release",
+      "targets": ["my_fem"]
     }
   ]
 }
