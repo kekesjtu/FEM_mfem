@@ -7,6 +7,7 @@ target_sources(fem_core PRIVATE
     "${PROJECT_SOURCE_DIR}/src/BCbuilder/MechanicalBCBuilder.cpp"
     "${PROJECT_SOURCE_DIR}/src/BCbuilder/ScalarBCBuilder.cpp"
     "${PROJECT_SOURCE_DIR}/src/app/Application.cpp"
+    "${PROJECT_SOURCE_DIR}/src/app/PythonTool.cpp"
     "${PROJECT_SOURCE_DIR}/src/assembler/ElectrostaticAssembler.cpp"
     "${PROJECT_SOURCE_DIR}/src/assembler/LocalAssemblyExecutor.cpp"
     "${PROJECT_SOURCE_DIR}/src/assembler/MechanicalAssembler.cpp"
@@ -74,3 +75,12 @@ target_link_libraries(FEM_solution PRIVATE
     fem::core
     fem_project_options
 )
+
+# Small standalone regression target; no MFEM/MPI linkage and no default build cost.
+add_executable(fem_python_tool_tests EXCLUDE_FROM_ALL
+    "${PROJECT_SOURCE_DIR}/tests/PythonToolTests.cpp"
+    "${PROJECT_SOURCE_DIR}/src/app/PythonTool.cpp"
+)
+target_include_directories(fem_python_tool_tests PRIVATE "${PROJECT_SOURCE_DIR}/include")
+target_compile_features(fem_python_tool_tests PRIVATE cxx_std_17)
+target_link_libraries(fem_python_tool_tests PRIVATE fem_project_options)

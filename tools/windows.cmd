@@ -3,7 +3,7 @@ setlocal EnableExtensions
 for %%I in ("%~dp0..") do set "FEM_PROJECT_ROOT=%%~fI"
 if not defined FEM_WINDOWS_SDK_ROOT set "FEM_WINDOWS_SDK_ROOT=E:\Dev\fem"
 set "FEM_ONEAPI=%FEM_WINDOWS_SDK_ROOT%\oneapi\Library"
-set "PATH=%FEM_PROJECT_ROOT%\tools\windows;%FEM_PROJECT_ROOT%\.venv\Scripts;%FEM_WINDOWS_SDK_ROOT%\install\openmp\bin;%FEM_ONEAPI%\bin;%FEM_ONEAPI%\bin\libfabric\utils;%PATH%"
+set "PATH=%FEM_PROJECT_ROOT%\.venv\Scripts;%FEM_WINDOWS_SDK_ROOT%\install\openmp\bin;%FEM_ONEAPI%\bin;%FEM_ONEAPI%\bin\libfabric\utils;%PATH%"
 set "I_MPI_ROOT=%FEM_ONEAPI%"
 set "MKLROOT=%FEM_ONEAPI%"
 set "PYTHONUTF8=1"

@@ -6,6 +6,11 @@ if(NOT FEM_WINDOWS_SDK_ROOT)
 endif()
 file(TO_CMAKE_PATH "${FEM_WINDOWS_SDK_ROOT}" _fem_sdk)
 set(_fem_oneapi "${_fem_sdk}/oneapi/Library")
+# Keep the compiler's absolute path stable across configure/build invocations.
+# Reapplying the bare name 'ifx' can invalidate CMake's resolved compiler cache.
+if(NOT CMAKE_Fortran_COMPILER)
+    set(CMAKE_Fortran_COMPILER "${_fem_oneapi}/bin/ifx.exe" CACHE FILEPATH "Intel Fortran compiler")
+endif()
 set(FEM_DEPENDENCY_ROOT "${_fem_sdk}/install" CACHE PATH "Installed dependency prefix")
 set(CMAKE_PREFIX_PATH "${_fem_sdk}/install/hypre;${_fem_oneapi}" CACHE STRING "Native SDK package prefixes")
 set(HYPRE_ROOT "${_fem_sdk}/install/hypre" CACHE PATH "HYPRE prefix")

@@ -40,8 +40,15 @@ tools\windows.cmd python-sync
 ```
 
 This keeps `.venv/`, the managed Python installation (`.uv/python/`), and
-the download cache (`build/uv-cache/`) inside this project. The `python3`
-command used by the C++ comparison hook resolves to this environment.
+the download cache (`build/uv-cache/`) inside this project. The C++ comparison
+hooks discover `.venv/Scripts/python.exe` on Windows and `.venv/bin/python`
+on Linux/macOS directly; no activation or python3.cmd shim is required.
+`FEM_PYTHON_EXECUTABLE` overrides discovery with an executable path or name
+(not a shell command). Otherwise discovery tries the project environment,
+an activated `VIRTUAL_ENV`, then Python on PATH (including Windows `py -3`).
+Run from the project root, as required for relative mesh and output paths.
+Extra comparison arguments support single/double quotes; they are passed
+directly to Python without shell expansion or command chaining.
 For standalone tool invocation, use `uv run tools/compare_solution_txt.py ...`
 from the project root.
 

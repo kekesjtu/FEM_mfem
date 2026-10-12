@@ -145,6 +145,7 @@
       "displayName": "Windows MSVC + Intel MPI, project-local dependencies (Release)",
       "inherits": "windows-msvc-bundled-full-release",
       "cacheVariables": {
+        "CMAKE_Fortran_COMPILER": null,
         "MPI_GUESS_LIBRARY_NAME": null,
         "FEM_USE_SYSTEM_LIGHTWEIGHT_DEPENDENCIES": "OFF",
         "CMAKE_PROJECT_TOP_LEVEL_INCLUDES": "${sourceDir}/cmake/windows/IntelDependencies.cmake"

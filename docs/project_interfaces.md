@@ -351,6 +351,14 @@ python3 tools/compare_time_curves.py --mine transient.txt --comsol reference.txt
 
 自动调用时，配置 `curve_reference_path` 和 `curve_compare_args` 即可。
 
+自动对比的 Python 解释器依次选择：环境变量 `FEM_PYTHON_EXECUTABLE` 指定的可执行文件、
+项目 `.venv`（Windows 为 `Scripts/python.exe`，Linux/macOS 为 `bin/python`）、
+已激活的 `VIRTUAL_ENV`，最后是 PATH 中的 Python（Windows 也支持 `py -3`）。
+请从项目根目录运行程序。解释器无需激活；无需 `python3.cmd` 或重命名 Python。
+`FEM_PYTHON_EXECUTABLE` 只接受解释器路径或名称，不接受带参数的 shell 命令。
+`compare_args` / `curve_compare_args` 支持单引号、双引号包裹含空格的参数；
+参数直接传给 Python，不展开环境变量、通配符或 shell 管道。
+
 ## 6. 错误与返回约定
 
 | 场景 | 行为 |

@@ -1,4 +1,5 @@
 #include "app/Application.hpp"
+#include "app/PythonTool.hpp"
 
 #include "frontend/ConfigLoader.hpp"
 #include "log/Logger.hpp"
@@ -6,7 +7,7 @@
 #include "transient/TransientSolver.hpp"
 
 #include <mpi.h>
-#include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <string>
 
@@ -15,6 +16,27 @@ namespace fem::app
 
 namespace
 {
+void RunComparisonTool(const std::string &script, const std::string &mine_file,
+                       const std::string &reference_file, const std::string &extra_args)
+{
+    auto logger = fem::log::Get();
+    try
+    {
+        const auto python = ResolvePython(std::filesystem::current_path());
+        std::vector<std::string> arguments{script, "--mine", mine_file, "--comsol", reference_file};
+        const auto extra = SplitToolArguments(extra_args);
+        arguments.insert(arguments.end(), extra.begin(), extra.end());
+        logger->info("Python interpreter: {}", python.executable.u8string());
+        const int status = RunPython(python, arguments);
+        if (status != 0)
+            logger->warn("Comparison script returned non-zero exit code: {}", status);
+    }
+    catch (const std::exception &error)
+    {
+        logger->warn("Comparison could not run: {}", error.what());
+    }
+}
+
 void RunComsolComparison(const frontend::SimulationConfig &sim)
 {
     if (sim.comsol_reference_path.empty())
@@ -54,16 +76,9 @@ void RunComsolComparison(const frontend::SimulationConfig &sim)
         return;
     }
 
-    std::string cmd = "python3 tools/compare_solution_txt.py --mine \"" + mine_file +
-                      "\" --comsol \"" + sim.comsol_reference_path + "\"";
-    if (!sim.compare_args.empty())
-        cmd += " " + sim.compare_args;
-
     logger->info("=== Running COMSOL comparison ===");
-    logger->info("Command: {}", cmd);
-    int ret = std::system(cmd.c_str());
-    if (ret != 0)
-        logger->warn("Comparison script returned non-zero exit code: {}", ret);
+    RunComparisonTool("tools/compare_solution_txt.py", mine_file,
+                      sim.comsol_reference_path, sim.compare_args);
 }
 
 void RunComsolCurveComparison(const frontend::SimulationConfig &sim)
@@ -97,16 +112,9 @@ void RunComsolCurveComparison(const frontend::SimulationConfig &sim)
         return;
     }
 
-    std::string cmd = "python3 tools/compare_time_curves.py --mine \"" + mine_file +
-                      "\" --comsol \"" + sim.curve_reference_path + "\"";
-    if (!sim.curve_compare_args.empty())
-        cmd += " " + sim.curve_compare_args;
-
     logger->info("=== Running COMSOL time-curve comparison ===");
-    logger->info("Command: {}", cmd);
-    int ret = std::system(cmd.c_str());
-    if (ret != 0)
-        logger->warn("Curve comparison script returned non-zero exit code: {}", ret);
+    RunComparisonTool("tools/compare_time_curves.py", mine_file,
+                      sim.curve_reference_path, sim.curve_compare_args);
 }
 }  // namespace
 
