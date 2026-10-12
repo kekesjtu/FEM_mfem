@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 4,
   "cmakeMinimumRequired": {
     "major": 3,
     "minor": 23,
@@ -65,6 +65,90 @@
         "FEM_USE_SYSTEM_MFEM": "ON",
         "MFEM_DIR": "$env{MFEM_DIR}"
       }
+    },
+    {
+      "name": "windows-msvc-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "condition": {
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows",
+        "type": "equals"
+      },
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "MPI_GUESS_LIBRARY_NAME": "MSMPI",
+        "CMAKE_C_COMPILER": "cl",
+        "FEM_ENABLE_CPARDISO": "OFF",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
+        "BUILD_SHARED_LIBS": "OFF",
+        "FEM_ENABLE_MUMPS": "OFF",
+        "CMAKE_CXX_COMPILER": "cl"
+      }
+    },
+    {
+      "name": "windows-msvc-bundled-debug",
+      "displayName": "Windows MSVC bundled MFEM (Debug)",
+      "description": "MPI/hypre iterative solvers; MUMPS and Cluster PARDISO disabled",
+      "inherits": "windows-msvc-base",
+      "cacheVariables": {
+        "FEM_USE_SYSTEM_MFEM": "OFF",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "windows-msvc-bundled-release",
+      "displayName": "Windows MSVC bundled MFEM (Release)",
+      "description": "MPI/hypre iterative solvers; MUMPS and Cluster PARDISO disabled",
+      "inherits": "windows-msvc-base",
+      "cacheVariables": {
+        "FEM_USE_SYSTEM_MFEM": "OFF",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "windows-msvc-system-debug",
+      "displayName": "Windows MSVC system MFEM (Debug)",
+      "description": "MPI/hypre iterative solvers; MUMPS and Cluster PARDISO disabled",
+      "inherits": "windows-msvc-base",
+      "cacheVariables": {
+        "MFEM_DIR": "$env{MFEM_DIR}",
+        "FEM_USE_SYSTEM_MFEM": "ON",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "windows-msvc-system-release",
+      "displayName": "Windows MSVC system MFEM (Release)",
+      "description": "MPI/hypre iterative solvers; MUMPS and Cluster PARDISO disabled",
+      "inherits": "windows-msvc-base",
+      "cacheVariables": {
+        "MFEM_DIR": "$env{MFEM_DIR}",
+        "FEM_USE_SYSTEM_MFEM": "ON",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "windows-msvc-bundled-full-release",
+      "displayName": "Windows MSVC + ifx, all configured solver backends (Release)",
+      "description": "Requires matching MPI Fortran, MUMPS, ScaLAPACK, BLAS/LAPACK and oneMKL",
+      "inherits": "windows-msvc-bundled-release",
+      "cacheVariables": {
+        "FEM_ENABLE_MUMPS": "ON",
+        "FEM_ENABLE_CPARDISO": "ON",
+        "CMAKE_Fortran_COMPILER": "ifx"
+      }
+    },
+    {
+      "name": "windows-msvc-intel-full-release",
+      "displayName": "Windows MSVC + Intel MPI, project-local dependencies (Release)",
+      "inherits": "windows-msvc-bundled-full-release",
+      "cacheVariables": {
+        "MPI_GUESS_LIBRARY_NAME": null,
+        "FEM_USE_SYSTEM_LIGHTWEIGHT_DEPENDENCIES": "OFF",
+        "CMAKE_PROJECT_TOP_LEVEL_INCLUDES": "${sourceDir}/cmake/windows/IntelDependencies.cmake"
+      }
     }
   ],
   "buildPresets": [
@@ -72,25 +156,125 @@
       "name": "build-linux-bundled-debug",
       "displayName": "Build Linux/WSL Bundled MFEM (Debug)",
       "configurePreset": "linux-bundled-debug",
-      "targets": ["FEM_solution"]
+      "targets": [
+        "FEM_solution"
+      ],
+      "condition": {
+        "rhs": "Linux",
+        "lhs": "${hostSystemName}",
+        "type": "equals"
+      }
     },
     {
       "name": "build-linux-system-debug",
       "displayName": "Build Linux/WSL System MFEM (Debug)",
       "configurePreset": "linux-system-debug",
-      "targets": ["FEM_solution"]
+      "targets": [
+        "FEM_solution"
+      ],
+      "condition": {
+        "rhs": "Linux",
+        "lhs": "${hostSystemName}",
+        "type": "equals"
+      }
     },
     {
       "name": "build-linux-bundled-release",
       "displayName": "Build Linux/WSL Bundled MFEM (Release)",
       "configurePreset": "linux-bundled-release",
-      "targets": ["FEM_solution"]
+      "targets": [
+        "FEM_solution"
+      ],
+      "condition": {
+        "rhs": "Linux",
+        "lhs": "${hostSystemName}",
+        "type": "equals"
+      }
     },
     {
       "name": "build-linux-system-release",
       "displayName": "Build Linux/WSL System MFEM (Release)",
       "configurePreset": "linux-system-release",
-      "targets": ["FEM_solution"]
+      "targets": [
+        "FEM_solution"
+      ],
+      "condition": {
+        "rhs": "Linux",
+        "lhs": "${hostSystemName}",
+        "type": "equals"
+      }
+    },
+    {
+      "name": "build-windows-msvc-bundled-debug",
+      "configurePreset": "windows-msvc-bundled-debug",
+      "targets": [
+        "FEM_solution"
+      ],
+      "condition": {
+        "rhs": "Windows",
+        "lhs": "${hostSystemName}",
+        "type": "equals"
+      }
+    },
+    {
+      "name": "build-windows-msvc-bundled-release",
+      "configurePreset": "windows-msvc-bundled-release",
+      "targets": [
+        "FEM_solution"
+      ],
+      "condition": {
+        "rhs": "Windows",
+        "lhs": "${hostSystemName}",
+        "type": "equals"
+      }
+    },
+    {
+      "name": "build-windows-msvc-system-debug",
+      "configurePreset": "windows-msvc-system-debug",
+      "targets": [
+        "FEM_solution"
+      ],
+      "condition": {
+        "rhs": "Windows",
+        "lhs": "${hostSystemName}",
+        "type": "equals"
+      }
+    },
+    {
+      "name": "build-windows-msvc-system-release",
+      "configurePreset": "windows-msvc-system-release",
+      "targets": [
+        "FEM_solution"
+      ],
+      "condition": {
+        "rhs": "Windows",
+        "lhs": "${hostSystemName}",
+        "type": "equals"
+      }
+    },
+    {
+      "name": "build-windows-msvc-bundled-full-release",
+      "configurePreset": "windows-msvc-bundled-full-release",
+      "targets": [
+        "FEM_solution"
+      ],
+      "condition": {
+        "rhs": "Windows",
+        "lhs": "${hostSystemName}",
+        "type": "equals"
+      }
+    },
+    {
+      "name": "build-windows-msvc-intel-full-release",
+      "configurePreset": "windows-msvc-intel-full-release",
+      "targets": [
+        "FEM_solution"
+      ],
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
     }
   ]
 }

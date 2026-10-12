@@ -2,12 +2,22 @@ include_guard(GLOBAL)
 
 include(FetchContent)
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    # This MFEM revision uses min/max OpenMP reductions, which MSVC's
+    # legacy /openmp backend rejects. The compiler remains cl.exe.
+    set(OpenMP_RUNTIME_MSVC llvm CACHE STRING "MSVC OpenMP runtime")
+    set(OpenMP_CXX_FLAGS "-openmp:llvm" CACHE STRING "MSVC OpenMP C++ flags")
+endif()
+
 find_package(OpenMP REQUIRED COMPONENTS CXX)
 message(STATUS "OpenMP found: ${OpenMP_CXX_VERSION}")
 
-# Prefer installed Config packages. Fall back to pinned upstream versions when
-# a package is not installed on the host.
-find_package(spdlog CONFIG QUIET)
+# Keep lightweight libraries in this project's build tree by default.
+option(FEM_USE_SYSTEM_LIGHTWEIGHT_DEPENDENCIES
+    "Prefer installed spdlog/json/muparser instead of project-local FetchContent" OFF)
+if(FEM_USE_SYSTEM_LIGHTWEIGHT_DEPENDENCIES)
+    find_package(spdlog CONFIG QUIET)
+endif()
 if(NOT TARGET spdlog::spdlog)
     set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "Disable spdlog examples" FORCE)
     set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "Disable spdlog tests" FORCE)
@@ -20,7 +30,9 @@ if(NOT TARGET spdlog::spdlog)
     FetchContent_MakeAvailable(spdlog)
 endif()
 
-find_package(nlohmann_json CONFIG QUIET)
+if(FEM_USE_SYSTEM_LIGHTWEIGHT_DEPENDENCIES)
+    find_package(nlohmann_json CONFIG QUIET)
+endif()
 if(NOT TARGET nlohmann_json::nlohmann_json)
     FetchContent_Declare(
         nlohmann_json
@@ -31,7 +43,9 @@ if(NOT TARGET nlohmann_json::nlohmann_json)
     FetchContent_MakeAvailable(nlohmann_json)
 endif()
 
-find_package(muparser CONFIG QUIET)
+if(FEM_USE_SYSTEM_LIGHTWEIGHT_DEPENDENCIES)
+    find_package(muparser CONFIG QUIET)
+endif()
 if(NOT TARGET muparser::muparser)
     set(ENABLE_SAMPLES OFF CACHE BOOL "Disable muparser samples" FORCE)
     set(BUILD_TESTING OFF CACHE BOOL "Disable dependency tests" FORCE)
